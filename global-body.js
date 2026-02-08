@@ -1,15 +1,73 @@
-<!--
-  Global Webflow footer custom code for map runtimes.
-  - Load once at site level (before page-level body wrappers).
-  - Page wrappers enqueue init jobs into window.KHMapsQueue.
--->
-<script
-  src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-  integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
-  crossorigin=""
-></script>
-<script src="https://unpkg.com/leaflet.fullscreen/dist/Control.FullScreen.umd.js"></script>
-<script>
+/*
+  Global Webflow footer runtime for KH maps.
+  Serve this file via jsDelivr and include once site-wide in footer custom code.
+*/
+(function () {
+  "use strict";
+
+  if (typeof window === "undefined" || typeof document === "undefined") return;
+
+  var loaderState = (window.__KHMapsLoaderState = window.__KHMapsLoaderState || {
+    started: false,
+    runtimeBooted: false,
+    scripts: {},
+  });
+
+  var LEAFLET_SRC = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
+  var FULLSCREEN_SRC = "https://unpkg.com/leaflet.fullscreen/dist/Control.FullScreen.umd.js";
+
+  function isLeafletLoaded() {
+    return typeof window.L !== "undefined";
+  }
+
+  function isFullscreenLoaded() {
+    return !!(
+      window.L &&
+      ((window.L.control && window.L.control.fullscreen) ||
+        (window.L.Control && (window.L.Control.Fullscreen || window.L.Control.FullScreen)))
+    );
+  }
+
+  function loadScript(src, isLoadedCheck) {
+    if (typeof isLoadedCheck === "function" && isLoadedCheck()) {
+      return Promise.resolve();
+    }
+
+    if (loaderState.scripts[src]) {
+      return loaderState.scripts[src];
+    }
+
+    loaderState.scripts[src] = new Promise(function (resolve, reject) {
+      var existing = document.querySelector('script[data-khmaps-src="' + src + '"]');
+      if (existing) {
+        existing.addEventListener("load", function () {
+          resolve();
+        });
+        existing.addEventListener("error", function (err) {
+          reject(err || new Error("Failed loading script: " + src));
+        });
+        return;
+      }
+
+      var script = document.createElement("script");
+      script.src = src;
+      script.async = true;
+      script.dataset.khmapsSrc = src;
+      script.addEventListener("load", function () {
+        resolve();
+      });
+      script.addEventListener("error", function (err) {
+        reject(err || new Error("Failed loading script: " + src));
+      });
+      (document.head || document.body || document.documentElement).appendChild(script);
+    });
+
+    return loaderState.scripts[src];
+  }
+
+  function bootRuntime() {
+    if (loaderState.runtimeBooted) return;
+    loaderState.runtimeBooted = true;
   (function () {
     "use strict";
 
@@ -3734,4 +3792,25 @@
       runQueuedJob(job);
     });
   })();
-</script>
+  }
+
+  function start() {
+    if (loaderState.started) return;
+    loaderState.started = true;
+
+    loadScript(LEAFLET_SRC, isLeafletLoaded)
+      .then(function () {
+        return loadScript(FULLSCREEN_SRC, isFullscreenLoaded).catch(function (err) {
+          console.warn("KHMaps fullscreen plugin failed to load", err);
+        });
+      })
+      .catch(function (err) {
+        console.error("KHMaps Leaflet dependency failed to load", err);
+      })
+      .finally(function () {
+        bootRuntime();
+      });
+  }
+
+  start();
+})();
