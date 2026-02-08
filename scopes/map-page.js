@@ -1266,16 +1266,44 @@
       var legend = L.control({ position: "bottomright" });
       legend.onAdd = function () {
         var div = L.DomUtil.create("div", "map-legend");
-        var title = document.createElement("div");
-        title.className = "map-legend__title";
-        title.textContent = "Legend";
-        div.appendChild(title);
+        var toggle = document.createElement("button");
+        toggle.type = "button";
+        toggle.className = "map-legend__title";
+        toggle.style.background = "none";
+        toggle.style.border = "0";
+        toggle.style.padding = "0";
+        toggle.style.margin = "0 0 6px 0";
+        toggle.style.width = "100%";
+        toggle.style.textAlign = "left";
+        toggle.style.cursor = "pointer";
+        div.appendChild(toggle);
+
+        var legendBody = document.createElement("div");
+        legendBody.className = "map-legend__body";
+        legendBody.id = "map-legend-body-" + Math.random().toString(36).slice(2, 8);
+        div.appendChild(legendBody);
+        toggle.setAttribute("aria-controls", legendBody.id);
+
+        var isLegendOpen = true;
+        function setLegendOpen(isOpen) {
+          isLegendOpen = !!isOpen;
+          legendBody.hidden = !isLegendOpen;
+          toggle.setAttribute("aria-expanded", isLegendOpen ? "true" : "false");
+          toggle.textContent = isLegendOpen ? "Legend (hide)" : "Legend (show)";
+          div.classList.toggle("map-legend--collapsed", !isLegendOpen);
+        }
+
+        toggle.addEventListener("click", function (event) {
+          event.preventDefault();
+          event.stopPropagation();
+          setLegendOpen(!isLegendOpen);
+        });
 
         if (phaseList.length) {
           var phaseTitle = document.createElement("div");
           phaseTitle.className = "map-legend__section-title";
           phaseTitle.textContent = "Phase Legend";
-          div.appendChild(phaseTitle);
+          legendBody.appendChild(phaseTitle);
 
           phaseList.forEach(function (phase) {
             var row = document.createElement("div");
@@ -1331,7 +1359,7 @@
               event.stopPropagation();
             });
 
-            div.appendChild(row);
+            legendBody.appendChild(row);
           });
         }
 
@@ -1339,7 +1367,7 @@
           var typeTitle = document.createElement("div");
           typeTitle.className = "map-legend__section-title";
           typeTitle.textContent = "Lot Types";
-          div.appendChild(typeTitle);
+          legendBody.appendChild(typeTitle);
 
           typeListUnique.forEach(function (type) {
             var row = document.createElement("div");
@@ -1361,7 +1389,7 @@
             label.textContent = type.name || type.slug || "";
             row.appendChild(swatch);
             row.appendChild(label);
-            div.appendChild(row);
+            legendBody.appendChild(row);
           });
         }
 
@@ -1369,7 +1397,7 @@
           var statusTitle = document.createElement("div");
           statusTitle.className = "map-legend__section-title";
           statusTitle.textContent = "Lot Status";
-          div.appendChild(statusTitle);
+          legendBody.appendChild(statusTitle);
         }
 
         statusList.forEach(function (item) {
@@ -1382,9 +1410,14 @@
           label.textContent = item.label;
           row.appendChild(swatch);
           row.appendChild(label);
-          div.appendChild(row);
+          legendBody.appendChild(row);
         });
 
+        if (L.DomEvent) {
+          L.DomEvent.disableClickPropagation(div);
+          L.DomEvent.disableScrollPropagation(div);
+        }
+        setLegendOpen(true);
         return div;
       };
       legend.addTo(map);
