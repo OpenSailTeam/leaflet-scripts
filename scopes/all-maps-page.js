@@ -406,11 +406,29 @@
         }, HIDE_DELAY_MS);
       }
 
+      function getPopupCenterLatLng(layer) {
+        if (!layer || !map || !map.latLngToContainerPoint) {
+          return layer && layer.getBounds ? layer.getBounds().getCenter() : null;
+        }
+
+        // Use projected bounds center so popup positioning matches on-screen polygon center.
+        // This avoids noticeable vertical offset in EPSG:3857 for taller south/north polygons.
+        var bounds = layer.getBounds();
+        var northEast = map.latLngToContainerPoint(bounds.getNorthEast());
+        var southWest = map.latLngToContainerPoint(bounds.getSouthWest());
+        var centerPoint = L.point(
+          (northEast.x + southWest.x) / 2,
+          (northEast.y + southWest.y) / 2,
+        );
+        return map.containerPointToLatLng(centerPoint);
+      }
+
       function showPopup(layer, lock) {
         if (!layer || !layer.__mapData) return;
         clearHideTimer();
         var data = layer.__mapData;
-        var center = layer.getBounds().getCenter();
+        var center = getPopupCenterLatLng(layer);
+        if (!center) center = layer.getBounds().getCenter();
         if (usingDomPopup && popupEl) {
           renderPopupContent(data, popupEl);
           var point = map.latLngToContainerPoint(center);
@@ -463,14 +481,24 @@
             lockedLayer = null;
             hoveredLayer = null;
             hidePopup(true);
+            if (event) {
+              L.DomEvent.stop(event);
+              if (event.originalEvent) {
+                event.originalEvent.preventDefault();
+                event.originalEvent.stopPropagation();
+              }
+            }
             return;
           }
           lockedLayer = null;
           hoveredLayer = polygon;
           showPopup(polygon, true);
-          var originalEvent = event && event.originalEvent;
-          if (originalEvent) {
-            L.DomEvent.stop(originalEvent);
+          if (event) {
+            L.DomEvent.stop(event);
+            if (event.originalEvent) {
+              event.originalEvent.preventDefault();
+              event.originalEvent.stopPropagation();
+            }
           }
         });
       });
