@@ -214,7 +214,7 @@
     function createLeafletPopup(map) {
       return L.popup({
         closeButton: false,
-        autoPan: true,
+        autoPan: false,
         offset: [0, -8],
         className: "map-boundary-popup",
       });
@@ -322,6 +322,7 @@
       var leafletPopup = usingDomPopup ? null : createLeafletPopup(map);
       var lockedLayer = null;
       var hoveredLayer = null;
+      var activeLayer = null;
       var overPopup = false;
       var hideTimer = null;
       var boundPopupEl = null;
@@ -383,6 +384,7 @@
       function closePopupNow() {
         clearHideTimer();
         overPopup = false;
+        activeLayer = null;
         if (!popupEl && leafletPopup) {
           map.closePopup(leafletPopup);
           return;
@@ -423,11 +425,11 @@
         return map.containerPointToLatLng(centerPoint);
       }
 
-      function showPopup(layer, lock) {
+      function showPopup(layer, lock, anchorLatLng) {
         if (!layer || !layer.__mapData) return;
         clearHideTimer();
         var data = layer.__mapData;
-        var center = getPopupCenterLatLng(layer);
+        var center = anchorLatLng || getPopupCenterLatLng(layer);
         if (!center) center = layer.getBounds().getCenter();
         if (usingDomPopup && popupEl) {
           renderPopupContent(data, popupEl);
@@ -447,6 +449,7 @@
             setTimeout(bindPopupHoverHandlers, 0);
           }
         }
+        activeLayer = layer;
         if (lock) lockedLayer = layer;
       }
 
@@ -465,11 +468,11 @@
         polygon.__mapData = item;
         bounds = bounds ? bounds.extend(polygon.getBounds()) : polygon.getBounds();
 
-        polygon.on("mouseover", function () {
+        polygon.on("mouseover", function (event) {
           if (lockedLayer && lockedLayer !== polygon) return;
           hoveredLayer = polygon;
           clearHideTimer();
-          showPopup(polygon, false);
+          showPopup(polygon, false, event && event.latlng);
         });
         polygon.on("mouseout", function () {
           if (hoveredLayer === polygon) hoveredLayer = null;
@@ -492,7 +495,11 @@
           }
           lockedLayer = null;
           hoveredLayer = polygon;
-          showPopup(polygon, true);
+          if (activeLayer === polygon) {
+            lockedLayer = polygon;
+          } else {
+            showPopup(polygon, true, event && event.latlng);
+          }
           if (event) {
             L.DomEvent.stop(event);
             if (event.originalEvent) {
