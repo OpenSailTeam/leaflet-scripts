@@ -1321,12 +1321,69 @@
     function focusPhaseOnMap(map, target, svgId) {
       if (!map || !target) return false;
       try {
-        var bbox = target.getBBox();
-        var bounds = L.latLngBounds(
-          L.latLng(bbox.y, bbox.x),
-          L.latLng(bbox.y + bbox.height, bbox.x + bbox.width),
-        );
-        map.fitBounds(bounds, { padding: [20, 20], animate: true });
+        var bounds = null;
+
+        if (
+          map.getContainer &&
+          map.containerPointToLatLng &&
+          target.getBoundingClientRect
+        ) {
+          var container = map.getContainer();
+          var targetRect = target.getBoundingClientRect();
+          var containerRect = container.getBoundingClientRect();
+          var left = targetRect.left - containerRect.left;
+          var top = targetRect.top - containerRect.top;
+          var right = targetRect.right - containerRect.left;
+          var bottom = targetRect.bottom - containerRect.top;
+
+          if (
+            Number.isFinite(left) &&
+            Number.isFinite(top) &&
+            Number.isFinite(right) &&
+            Number.isFinite(bottom) &&
+            right > left &&
+            bottom > top
+          ) {
+            // Prevent over-zoom when phase geometry is very small on screen.
+            var minFocusSizePx = 220;
+            var width = right - left;
+            var height = bottom - top;
+            if (width < minFocusSizePx || height < minFocusSizePx) {
+              var centerX = (left + right) / 2;
+              var centerY = (top + bottom) / 2;
+              var halfWidth = Math.max(width, minFocusSizePx) / 2;
+              var halfHeight = Math.max(height, minFocusSizePx) / 2;
+              left = centerX - halfWidth;
+              right = centerX + halfWidth;
+              top = centerY - halfHeight;
+              bottom = centerY + halfHeight;
+            }
+
+            var sw = map.containerPointToLatLng([left, bottom]);
+            var ne = map.containerPointToLatLng([right, top]);
+            bounds = L.latLngBounds(sw, ne);
+          }
+        }
+
+        if (!bounds) {
+          var bbox = target.getBBox();
+          bounds = L.latLngBounds(
+            L.latLng(bbox.y, bbox.x),
+            L.latLng(bbox.y + bbox.height, bbox.x + bbox.width),
+          );
+        }
+
+        var fitOptions = {
+          padding: [40, 40],
+          animate: true,
+        };
+        if (typeof map.getBoundsZoom === "function") {
+          var adjustedMaxZoom = map.getBoundsZoom(bounds, false, [40, 40]) - 0.75;
+          if (Number.isFinite(adjustedMaxZoom)) {
+            fitOptions.maxZoom = adjustedMaxZoom;
+          }
+        }
+        map.fitBounds(bounds, fitOptions);
         return true;
       } catch (err) {
         console.warn("Unable to focus phase", svgId || "", err);
