@@ -321,28 +321,33 @@
         }, HIDE_DELAY_MS);
       }
 
-      function getPopupCenterLatLng(layer) {
+      function getPopupLatLng(layer) {
         if (!layer || !map || !map.latLngToContainerPoint) {
           return layer && layer.getBounds ? layer.getBounds().getCenter() : null;
         }
 
-        // Use projected bounds center so popup positioning matches on-screen polygon center.
-        // This avoids noticeable vertical offset in EPSG:3857 for taller south/north polygons.
-        var bounds = layer.getBounds();
-        var northEast = map.latLngToContainerPoint(bounds.getNorthEast());
-        var southWest = map.latLngToContainerPoint(bounds.getSouthWest());
-        var centerPoint = L.point(
-          (northEast.x + southWest.x) / 2,
-          (northEast.y + southWest.y) / 2,
-        );
-        return map.containerPointToLatLng(centerPoint);
+        try {
+          var bounds = layer.getBounds();
+          var northEast = map.latLngToContainerPoint(bounds.getNorthEast());
+          var southWest = map.latLngToContainerPoint(bounds.getSouthWest());
+          var offset = -20;
+          var x = (northEast.x + southWest.x) / 2;
+          var y = northEast.y - offset;
+          if (Number.isFinite(x) && Number.isFinite(y)) {
+            return map.containerPointToLatLng([x, y]);
+          }
+        } catch (err) {
+          // Fall back to bounds center if needed.
+        }
+
+        return layer.getBounds().getCenter();
       }
 
-      function showPopup(layer, lock, anchorLatLng) {
+      function showPopup(layer, lock) {
         if (!layer || !layer.__mapData) return;
         clearHideTimer();
         var data = layer.__mapData;
-        var center = anchorLatLng || getPopupCenterLatLng(layer);
+        var center = getPopupLatLng(layer);
         if (!center) center = layer.getBounds().getCenter();
         ensurePopup()
           .setLatLng(center)
@@ -374,7 +379,7 @@
           if (lockedLayer && lockedLayer !== polygon) return;
           hoveredLayer = polygon;
           clearHideTimer();
-          showPopup(polygon, false, event && event.latlng);
+          showPopup(polygon, false);
         });
         polygon.on("mouseout", function () {
           if (hoveredLayer === polygon) hoveredLayer = null;
@@ -395,7 +400,7 @@
             return;
           }
           hoveredLayer = polygon;
-          showPopup(polygon, true, event && event.latlng);
+          showPopup(polygon, true);
           if (event) {
             L.DomEvent.stop(event);
             if (event.originalEvent) {
