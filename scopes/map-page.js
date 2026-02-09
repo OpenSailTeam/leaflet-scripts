@@ -520,6 +520,7 @@
       var clone = clonePopupCardFromSource(template);
       if (!clone) return null;
       setFallbackCardContent(clone, lot);
+      applyPopupBuilderContent(clone, lot);
       return clone;
     }
 
@@ -567,6 +568,7 @@
       var source = getPopupSourceForLot(lot, preferredSource || null);
       var clone = clonePopupCardFromSource(source);
       if (!clone) clone = buildFallbackPopupCard(lot);
+      applyPopupBuilderContent(clone, lot);
       return clone;
     }
 
@@ -844,6 +846,64 @@
         return text;
       }
       return "";
+    }
+
+    function getLotBuilderLink(lot) {
+      var url =
+        lot.builderLink ||
+        lot.builder_link ||
+        lot["builder-link"] ||
+        lot.builderWebsite ||
+        lot.builder_website ||
+        lot["builder-website"] ||
+        "";
+      if (Array.isArray(url)) {
+        url = url[0] || "";
+      }
+      if (url && typeof url === "object") {
+        url = url.url || url.href || "";
+      }
+      if (!url) return "";
+      var text = String(url).trim();
+      if (!text) return "";
+      if (/^https?:\/\//i.test(text) || /^\/\/[^/]/.test(text)) {
+        return text;
+      }
+      return "";
+    }
+
+    function applyPopupBuilderContent(card, lot) {
+      if (!card || !lot) return;
+
+      var logoEl = card.querySelector("[data-lot-field='logo']");
+      if (logoEl && logoEl.tagName === "IMG") {
+        var logoUrl = getLotLogoUrl(lot);
+        if (logoUrl) {
+          logoEl.setAttribute("src", logoUrl);
+          var logoAlt = String(lot.name || lot.pid || "Builder logo").trim();
+          if (!logoEl.getAttribute("alt")) {
+            logoEl.setAttribute("alt", logoAlt);
+          }
+        } else {
+          logoEl.removeAttribute("src");
+        }
+      }
+
+      var builderLinkEl = card.querySelector("[data-lot-field='builderLink']");
+      if (builderLinkEl && builderLinkEl.tagName === "A") {
+        var builderLink = getLotBuilderLink(lot);
+        if (builderLink) {
+          builderLinkEl.setAttribute("href", builderLink);
+          if (!builderLinkEl.getAttribute("target")) {
+            builderLinkEl.setAttribute("target", "_blank");
+          }
+          if (!builderLinkEl.getAttribute("rel")) {
+            builderLinkEl.setAttribute("rel", "noopener");
+          }
+        } else {
+          builderLinkEl.removeAttribute("href");
+        }
+      }
     }
 
     function getLotDetails(lot) {
