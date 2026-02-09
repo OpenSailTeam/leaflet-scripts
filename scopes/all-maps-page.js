@@ -10,8 +10,6 @@
 
     var MAP_CONTAINER_ID = "all-maps";
     var MAP_ITEM_SELECTOR = ".map-json";
-    var POPUP_ID = "all-maps-popup";
-    var POPUP_FALLBACK_ID = "svg-popup";
 
     function decodeHtmlEntities(value) {
       if (!value || value.indexOf("&") === -1) return value;
@@ -146,75 +144,10 @@
       return items;
     }
 
-    function getPopupElement() {
-      return (
-        document.getElementById(POPUP_ID) ||
-        document.getElementById(POPUP_FALLBACK_ID)
-      );
-    }
-
-    function setFirstMatchText(root, selectors, value) {
-      if (!root) return;
-      for (var i = 0; i < selectors.length; i += 1) {
-        var el = root.querySelector(selectors[i]);
-        if (!el) continue;
-        el.textContent = value || "";
-        return;
-      }
-    }
-
-    function setFirstMatchLink(root, selectors, href, text) {
-      if (!root) return;
-      for (var i = 0; i < selectors.length; i += 1) {
-        var el = root.querySelector(selectors[i]);
-        if (!el) continue;
-        if (href) {
-          el.setAttribute("href", href);
-          el.removeAttribute("aria-disabled");
-          el.style.display = "";
-        } else {
-          el.setAttribute("href", "#");
-          el.setAttribute("aria-disabled", "true");
-          el.style.display = "none";
-        }
-        if (text && !el.textContent.trim()) {
-          el.textContent = text;
-        }
-        return;
-      }
-    }
-
-    function setPopupHeaderColor(root, color) {
-      if (!root || !color) return;
-      var header =
-        root.querySelector("[data-map-header]") ||
-        root.querySelector(".head") ||
-        root.querySelector(".map-boundary-popup__header");
-      if (!header) return;
-      header.style.background = color;
-    }
-
-    function renderPopupContent(data, popup) {
-      if (!popup || !data) return;
-      setFirstMatchText(popup, ["[data-map-field='name']", ".head h3", "h3"], data.name || "");
-      setFirstMatchText(
-        popup,
-        ["[data-map-field='deal']", ".deal_info", ".deal-info"],
-        data.dealInformation || "",
-      );
-      setFirstMatchLink(
-        popup,
-        ["[data-map-field='link']", ".btn-list a", "a"],
-        data.url || "",
-        "View area",
-      );
-      setPopupHeaderColor(popup, data.color || "");
-    }
-
-    function createLeafletPopup(map) {
+    function createLeafletPopup() {
       return L.popup({
         closeButton: false,
-        autoPan: false,
+        autoPan: true,
         offset: [0, -8],
         className: "map-boundary-popup",
       });
@@ -317,12 +250,9 @@
       var boundaryPane = map.createPane("map-boundaries");
       boundaryPane.style.zIndex = 400;
 
-      var popupEl = getPopupElement();
-      var usingDomPopup = !!popupEl;
-      var leafletPopup = usingDomPopup ? null : createLeafletPopup(map);
+      var popup = null;
       var lockedLayer = null;
       var hoveredLayer = null;
-      var activeLayer = null;
       var overPopup = false;
       var hideTimer = null;
       var boundPopupEl = null;
@@ -335,11 +265,8 @@
       }
 
       function getActivePopupElement() {
-        if (usingDomPopup && popupEl) return popupEl;
-        if (leafletPopup && typeof leafletPopup.getElement === "function") {
-          return leafletPopup.getElement();
-        }
-        return null;
+        if (!popup || typeof popup.getElement !== "function") return null;
+        return popup.getElement();
       }
 
       function onPopupMouseEnter() {
@@ -353,58 +280,44 @@
       }
 
       function bindPopupHoverHandlers() {
-        var activePopupEl = getActivePopupElement();
-        if (!activePopupEl || activePopupEl === boundPopupEl) return;
+        var popupEl = getActivePopupElement();
+        if (!popupEl || popupEl === boundPopupEl) return;
         if (boundPopupEl) {
           boundPopupEl.removeEventListener("mouseenter", onPopupMouseEnter);
           boundPopupEl.removeEventListener("mouseleave", onPopupMouseLeave);
         }
-        boundPopupEl = activePopupEl;
+        boundPopupEl = popupEl;
         boundPopupEl.addEventListener("mouseenter", onPopupMouseEnter);
         boundPopupEl.addEventListener("mouseleave", onPopupMouseLeave);
       }
 
-      if (popupEl) {
-        popupEl.style.display = "none";
-        popupEl.style.position = "absolute";
-        bindPopupHoverHandlers();
-      }
-
-      if (leafletPopup) {
-        leafletPopup.on("remove", function () {
+      function ensurePopup() {
+        if (popup) return popup;
+        popup = createLeafletPopup();
+        popup.on("remove", function () {
           if (boundPopupEl) {
             boundPopupEl.removeEventListener("mouseenter", onPopupMouseEnter);
             boundPopupEl.removeEventListener("mouseleave", onPopupMouseLeave);
             boundPopupEl = null;
           }
           overPopup = false;
+          lockedLayer = null;
         });
+        return popup;
       }
 
       function closePopupNow() {
         clearHideTimer();
         overPopup = false;
-        activeLayer = null;
-        if (!popupEl && leafletPopup) {
-          map.closePopup(leafletPopup);
-          return;
-        }
-        if (!popupEl) return;
-        popupEl.style.display = "none";
-      }
-
-      function hidePopup(force) {
-        if (lockedLayer && !force) return;
-        closePopupNow();
+        if (popup) map.closePopup(popup);
       }
 
       function scheduleHide() {
         clearHideTimer();
         hideTimer = setTimeout(function () {
           hideTimer = null;
-          if (!lockedLayer && !hoveredLayer && !overPopup) {
-            hidePopup(true);
-          }
+          if (lockedLayer || hoveredLayer || overPopup) return;
+          closePopupNow();
         }, HIDE_DELAY_MS);
       }
 
@@ -431,25 +344,14 @@
         var data = layer.__mapData;
         var center = anchorLatLng || getPopupCenterLatLng(layer);
         if (!center) center = layer.getBounds().getCenter();
-        if (usingDomPopup && popupEl) {
-          renderPopupContent(data, popupEl);
-          var point = map.latLngToContainerPoint(center);
-          var offsetX = toNumber(popupEl.dataset.offsetX) || 0;
-          var offsetY = toNumber(popupEl.dataset.offsetY) || 0;
-          popupEl.style.left = point.x + offsetX + "px";
-          popupEl.style.top = point.y + offsetY + "px";
-          popupEl.style.display = "block";
-        } else if (leafletPopup) {
-          leafletPopup
-            .setLatLng(center)
-            .setContent(buildLeafletContent(data))
-            .openOn(map);
-          bindPopupHoverHandlers();
-          if (!boundPopupEl) {
-            setTimeout(bindPopupHoverHandlers, 0);
-          }
+        ensurePopup()
+          .setLatLng(center)
+          .setContent(buildLeafletContent(data))
+          .openOn(map);
+        bindPopupHoverHandlers();
+        if (!boundPopupEl) {
+          setTimeout(bindPopupHoverHandlers, 0);
         }
-        activeLayer = layer;
         if (lock) lockedLayer = layer;
       }
 
@@ -482,8 +384,7 @@
           clearHideTimer();
           if (lockedLayer === polygon) {
             lockedLayer = null;
-            hoveredLayer = null;
-            hidePopup(true);
+            closePopupNow();
             if (event) {
               L.DomEvent.stop(event);
               if (event.originalEvent) {
@@ -493,13 +394,8 @@
             }
             return;
           }
-          lockedLayer = null;
           hoveredLayer = polygon;
-          if (activeLayer === polygon) {
-            lockedLayer = polygon;
-          } else {
-            showPopup(polygon, true, event && event.latlng);
-          }
+          showPopup(polygon, true, event && event.latlng);
           if (event) {
             L.DomEvent.stop(event);
             if (event.originalEvent) {
@@ -517,17 +413,11 @@
       }
 
       map.on("click", function () {
+        clearHideTimer();
         hoveredLayer = null;
+        overPopup = false;
         lockedLayer = null;
-        hidePopup(true);
-      });
-      map.on("dragstart", function () {
-        hoveredLayer = null;
-        if (!lockedLayer) hidePopup(true);
-      });
-      map.on("zoomstart", function () {
-        hoveredLayer = null;
-        if (!lockedLayer) hidePopup(true);
+        closePopupNow();
       });
       window.addEventListener("resize", function () {
         map.invalidateSize();
