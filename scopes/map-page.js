@@ -1246,6 +1246,171 @@
       }
     }
 
+    function normalizePhaseKeyPart(value) {
+      return String(value || "").trim().toLowerCase();
+    }
+
+    function getPhaseLookupKeys(phase) {
+      var keys = [];
+      if (!phase) return keys;
+      var svgId = normalizePhaseKeyPart(phase.svgId);
+      var slug = normalizePhaseKeyPart(phase.slug);
+      var name = normalizePhaseKeyPart(phase.name);
+      if (svgId) keys.push("svg:" + svgId);
+      if (slug) keys.push("slug:" + slug);
+      if (name) keys.push("name:" + name);
+      return keys;
+    }
+
+    function buildRelevantPhaseLookup(phaseList) {
+      var lookup = {};
+      (Array.isArray(phaseList) ? phaseList : []).forEach(function (phase) {
+        getPhaseLookupKeys(phase).forEach(function (key) {
+          lookup[key] = true;
+        });
+      });
+      return lookup;
+    }
+
+    function isPhaseRelevant(phase, relevantLookup) {
+      if (!phase) return false;
+      var keys = getPhaseLookupKeys(phase);
+      for (var i = 0; i < keys.length; i += 1) {
+        if (relevantLookup[keys[i]]) return true;
+      }
+      return false;
+    }
+
+    function getPhaseTarget(svgRoot, phase) {
+      if (!phase || !phase.svgId || !svgRoot) return null;
+      return svgRoot.querySelector("#" + CSS.escape(phase.svgId));
+    }
+
+    function focusPhaseOnMap(map, target, svgId) {
+      if (!map || !target) return false;
+      try {
+        var bbox = target.getBBox();
+        var bounds = L.latLngBounds(
+          L.latLng(bbox.y, bbox.x),
+          L.latLng(bbox.y + bbox.height, bbox.x + bbox.width),
+        );
+        map.fitBounds(bounds, { padding: [20, 20], animate: true });
+        return true;
+      } catch (err) {
+        console.warn("Unable to focus phase", svgId || "", err);
+        return false;
+      }
+    }
+
+    function bindPhaseFocusTrigger(el, map, target, svgId) {
+      if (!el || !el.addEventListener) return;
+      if (el.__khPhaseFocusClickHandler) {
+        el.removeEventListener("click", el.__khPhaseFocusClickHandler);
+        delete el.__khPhaseFocusClickHandler;
+      }
+      if (!map || !target) {
+        if (el.dataset) {
+          delete el.dataset.phaseFocusBound;
+          delete el.dataset.phaseFocusSvgId;
+        }
+        if (el.style && el.style.cursor === "pointer") {
+          el.style.removeProperty("cursor");
+        }
+        return;
+      }
+      var handler = function (event) {
+        event.preventDefault();
+        event.stopPropagation();
+        focusPhaseOnMap(map, target, svgId);
+      };
+      el.addEventListener("click", handler);
+      el.__khPhaseFocusClickHandler = handler;
+      if (el.dataset) {
+        el.dataset.phaseFocusBound = "true";
+        el.dataset.phaseFocusSvgId = svgId || "";
+      }
+      if (el.style) {
+        el.style.cursor = "pointer";
+      }
+    }
+
+    function parsePhaseFromNode(node) {
+      if (!node) return null;
+      var raw = node.dataset.json || node.textContent;
+      if (!raw) return null;
+      try {
+        var decoded = decodeHtmlEntities(raw);
+        return normalizePhase(JSON.parse(decoded));
+      } catch (err) {
+        console.warn("Invalid map phase JSON", err, raw);
+        return null;
+      }
+    }
+
+    function getOutsideLegendItem(node) {
+      if (!node) return null;
+      return (
+        node.closest(".w-dyn-item") ||
+        node.closest(".collection-item-3") ||
+        node.parentElement ||
+        null
+      );
+    }
+
+    function getOutsidePhaseClickableParts(item) {
+      if (!item) return { swatch: null, label: null };
+      var row = item.querySelector(".div-block-102");
+      if (!row) row = item.firstElementChild || item;
+
+      var swatch =
+        row.querySelector(".div-block-101") ||
+        row.querySelector("[class*='swatch']") ||
+        null;
+      var label = null;
+      for (var i = 0; i < row.children.length; i += 1) {
+        var child = row.children[i];
+        if (!child || child === swatch) continue;
+        if (child.tagName === "A") continue;
+        var text = String(child.textContent || "").trim();
+        if (!text) continue;
+        if (text === "·" || text === "⋅" || text === "•" || text === "|") {
+          continue;
+        }
+        label = child;
+        break;
+      }
+
+      return {
+        swatch: swatch,
+        label: label,
+      };
+    }
+
+    function syncOutsidePhaseLegend(map, svgRoot, relevantPhaseLookup) {
+      document.querySelectorAll(".map-phases-json").forEach(function (node) {
+        var phase = parsePhaseFromNode(node);
+        if (!phase) return;
+
+        var item = getOutsideLegendItem(node);
+        if (!item) return;
+
+        var relevant = isPhaseRelevant(phase, relevantPhaseLookup);
+        if (!relevant) {
+          item.style.display = "none";
+          item.setAttribute("aria-hidden", "true");
+          return;
+        }
+
+        item.style.removeProperty("display");
+        item.removeAttribute("aria-hidden");
+
+        var phaseTarget = getPhaseTarget(svgRoot, phase);
+        var parts = getOutsidePhaseClickableParts(item);
+        bindPhaseFocusTrigger(parts.swatch, map, phaseTarget, phase.svgId);
+        bindPhaseFocusTrigger(parts.label, map, phaseTarget, phase.svgId);
+      });
+    }
+
     function addLegend(map, lots, phases, svgRoot, lotTypes) {
       var phaseList = Array.isArray(phases) ? phases.slice() : [];
       var typeList =
@@ -1297,11 +1462,6 @@
       });
 
       var statusList = Object.values(entries);
-      var hasPhases = phaseList.length > 0;
-      var hasTypes = typeListUnique.length > 0;
-      var hasStatuses = statusList.length > 0;
-      if (!hasPhases && !hasTypes && !hasStatuses) return;
-
       statusList.sort(function (a, b) {
         if (a.sort !== null && b.sort !== null) return a.sort - b.sort;
         if (a.sort !== null) return -1;
@@ -1322,6 +1482,14 @@
         if (bSort !== undefined) return 1;
         return String(a.name || "").localeCompare(String(b.name || ""));
       });
+
+      var relevantPhaseLookup = buildRelevantPhaseLookup(phaseList);
+      syncOutsidePhaseLegend(map, svgRoot, relevantPhaseLookup);
+
+      var hasPhases = phaseList.length > 0;
+      var hasTypes = typeListUnique.length > 0;
+      var hasStatuses = statusList.length > 0;
+      if (!hasPhases && !hasTypes && !hasStatuses) return;
 
       var legend = L.control({ position: "bottomright" });
       legend.onAdd = function () {
@@ -1397,27 +1565,9 @@
               row.appendChild(link);
             }
 
-            row.addEventListener("click", function (event) {
-              if (event.target && event.target.closest("a")) {
-                return;
-              }
-              var svgId = phase.svgId;
-              if (!svgId || !svgRoot) return;
-              var target = svgRoot.querySelector("#" + CSS.escape(svgId));
-              if (!target) return;
-              try {
-                var bbox = target.getBBox();
-                var bounds = L.latLngBounds(
-                  L.latLng(bbox.y, bbox.x),
-                  L.latLng(bbox.y + bbox.height, bbox.x + bbox.width),
-                );
-                map.fitBounds(bounds, { padding: [20, 20], animate: true });
-              } catch (err) {
-                console.warn("Unable to focus phase", svgId, err);
-              }
-              event.preventDefault();
-              event.stopPropagation();
-            });
+            var phaseTarget = getPhaseTarget(svgRoot, phase);
+            bindPhaseFocusTrigger(swatch, map, phaseTarget, phase.svgId);
+            bindPhaseFocusTrigger(label, map, phaseTarget, phase.svgId);
 
             legendBody.appendChild(row);
           });
