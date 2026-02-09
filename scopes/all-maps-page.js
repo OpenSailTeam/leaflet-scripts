@@ -43,6 +43,15 @@
       return Number.isFinite(num) ? num : null;
     }
 
+    function pickFirstDefined(values) {
+      for (var i = 0; i < values.length; i += 1) {
+        var value = values[i];
+        if (value === undefined || value === null || value === "") continue;
+        return value;
+      }
+      return null;
+    }
+
     function normalizeCoords(raw) {
       if (!raw) return [];
       var coords = raw;
@@ -109,6 +118,16 @@
         color: color,
         dealInformation: dealInformation,
         coordinates: coords,
+        popupOffsetX: pickFirstDefined([
+          item.popupOffsetX,
+          item.popup_offset_x,
+          item["popup-offset-x"],
+        ]),
+        popupOffsetY: pickFirstDefined([
+          item.popupOffsetY,
+          item.popup_offset_y,
+          item["popup-offset-y"],
+        ]),
       };
     }
 
@@ -321,18 +340,29 @@
         }, HIDE_DELAY_MS);
       }
 
+      function getPopupOffset(data, axis) {
+        if (!data) return 0;
+        var value = axis === "x" ? data.popupOffsetX : data.popupOffsetY;
+        if (value === undefined || value === null || value === "") return 0;
+        var parsed = toNumber(value);
+        return parsed === null ? 0 : parsed;
+      }
+
       function getPopupLatLng(layer) {
         if (!layer || !map || !map.latLngToContainerPoint) {
           return layer && layer.getBounds ? layer.getBounds().getCenter() : null;
         }
 
         try {
+          var data = layer.__mapData || null;
           var bounds = layer.getBounds();
           var northEast = map.latLngToContainerPoint(bounds.getNorthEast());
           var southWest = map.latLngToContainerPoint(bounds.getSouthWest());
           var offset = -20;
-          var x = (northEast.x + southWest.x) / 2;
-          var y = northEast.y - offset;
+          var popupOffsetX = getPopupOffset(data, "x");
+          var popupOffsetY = getPopupOffset(data, "y");
+          var x = (northEast.x + southWest.x) / 2 + popupOffsetX;
+          var y = northEast.y - offset + popupOffsetY;
           if (Number.isFinite(x) && Number.isFinite(y)) {
             return map.containerPointToLatLng([x, y]);
           }
