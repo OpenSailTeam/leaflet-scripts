@@ -872,6 +872,38 @@
       return "";
     }
 
+    function isNodeVisuallyEmpty(node) {
+      if (!node) return true;
+      for (var i = 0; i < node.childNodes.length; i += 1) {
+        var child = node.childNodes[i];
+        if (child.nodeType === 3) {
+          if (String(child.textContent || "").trim()) return false;
+          continue;
+        }
+        if (child.nodeType !== 1) continue;
+        var tag = child.tagName;
+        if (tag === "SCRIPT" || tag === "STYLE" || tag === "TEMPLATE") {
+          continue;
+        }
+        if (!isNodeVisuallyEmpty(child)) return false;
+      }
+      return true;
+    }
+
+    function removeNodeAndPruneEmptyAncestors(node, root) {
+      if (!node || !root) return;
+      var current = node;
+      while (current && current !== root) {
+        var parent = current.parentElement;
+        if (current.parentNode) {
+          current.parentNode.removeChild(current);
+        }
+        if (!parent || parent === root) return;
+        if (!isNodeVisuallyEmpty(parent)) return;
+        current = parent;
+      }
+    }
+
     function applyPopupBuilderContent(card, lot) {
       if (!card || !lot) return;
 
@@ -885,7 +917,7 @@
             logoEl.setAttribute("alt", logoAlt);
           }
         } else {
-          logoEl.removeAttribute("src");
+          removeNodeAndPruneEmptyAncestors(logoEl, card);
         }
       }
 
@@ -901,7 +933,7 @@
             builderLinkEl.setAttribute("rel", "noopener");
           }
         } else {
-          builderLinkEl.removeAttribute("href");
+          removeNodeAndPruneEmptyAncestors(builderLinkEl, card);
         }
       }
     }
