@@ -872,6 +872,27 @@
       return "";
     }
 
+    function normalizePopupFileUrl(value) {
+      var url = value;
+      if (Array.isArray(url)) {
+        url = url[0] || "";
+      }
+      if (url && typeof url === "object") {
+        url = url.url || url.href || url.file || "";
+      }
+      if (!url) return "";
+      var text = String(url).trim();
+      if (!text) return "";
+      if (
+        /^https?:\/\//i.test(text) ||
+        /^\/\/[^/]/.test(text) ||
+        text.charAt(0) === "/"
+      ) {
+        return text;
+      }
+      return "";
+    }
+
     function isNodeVisuallyEmpty(node) {
       if (!node) return true;
       for (var i = 0; i < node.childNodes.length; i += 1) {
@@ -901,6 +922,27 @@
         if (!parent || parent === root) return;
         if (!isNodeVisuallyEmpty(parent)) return;
         current = parent;
+      }
+    }
+
+    function applyPopupCardLinkField(card, lot, dataFieldName, lotJsonKey) {
+      if (!card || !lot || !dataFieldName || !lotJsonKey) return;
+      var selector = "[data-lot-field='" + dataFieldName + "']";
+      var linkEl = card.querySelector(selector);
+      if (!linkEl || linkEl.tagName !== "A") return;
+
+      var href = normalizePopupFileUrl(lot[lotJsonKey]);
+      if (!href) {
+        removeNodeAndPruneEmptyAncestors(linkEl, card);
+        return;
+      }
+
+      linkEl.setAttribute("href", href);
+      if (!linkEl.getAttribute("target")) {
+        linkEl.setAttribute("target", "_blank");
+      }
+      if (!linkEl.getAttribute("rel")) {
+        linkEl.setAttribute("rel", "noopener");
       }
     }
 
@@ -936,6 +978,19 @@
           removeNodeAndPruneEmptyAncestors(builderLinkEl, card);
         }
       }
+
+      applyPopupCardLinkField(
+        card,
+        lot,
+        "lotInformationPdf",
+        "lotInformationPdf",
+      );
+      applyPopupCardLinkField(
+        card,
+        lot,
+        "architecturalControlsPdf",
+        "architecturalControlsPdf",
+      );
     }
 
     function getLotDetails(lot) {
