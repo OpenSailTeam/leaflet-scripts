@@ -1027,6 +1027,7 @@
       var activeShapeId = String(options.activeElementId || "").trim();
       var assignmentState = options.assignmentState;
       var webhookUrl = String(options.webhookUrl || "").trim();
+      var scheduleLotsRefresh = options.scheduleLotsRefresh;
       if (!activeShapeId || !assignmentState || !webhookUrl) return;
 
       if (card.querySelector(".lot-assignment-editor")) return;
@@ -1380,7 +1381,11 @@
         var formBody = buildWebhookFormBody(payload);
         var snapshot = snapshotAssignmentState(assignmentState);
 
-        applyShapeAssignmentChange(assignmentState, activeShapeId, nextLot);
+        var changedShapeIds = applyShapeAssignmentChange(
+          assignmentState,
+          activeShapeId,
+          nextLot,
+        );
         pendingLot = assignmentState.shapeToLot[activeShapeId] || null;
         var pendingRecord = getRecordForLot(pendingLot);
         selectedOptionKey = pendingRecord ? pendingRecord.optionKey : "";
@@ -1399,6 +1404,9 @@
           body: formBody,
         })
           .then(function () {
+            if (typeof scheduleLotsRefresh === "function") {
+              scheduleLotsRefresh(changedShapeIds || []);
+            }
             setStatus(
               "Assignment request sent to Zapier. Refresh if the CMS view is delayed.",
               "success",
@@ -1446,6 +1454,7 @@
         activeElementId: activeElementId,
         assignmentState: editorOptions && editorOptions.assignmentState,
         webhookUrl: editorOptions && editorOptions.webhookUrl,
+        scheduleLotsRefresh: editorOptions && editorOptions.scheduleLotsRefresh,
       });
       return clone;
     }
@@ -1938,6 +1947,7 @@
         return clonePopupCardForLot(lot, preferredSource || null, shapeId, {
           assignmentState: assignmentState,
           webhookUrl: webhookUrl,
+          scheduleLotsRefresh: scheduleLotsRefresh,
         });
       }
 
