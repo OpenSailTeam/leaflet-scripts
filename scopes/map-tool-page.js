@@ -10,6 +10,9 @@
 
     var LOT_SELECTOR = ".lot";
     var MAP_ID = "map";
+    var ASSIGNMENT_WEBHOOK_DEFAULT_URL =
+      "https://hooks.zapier.com/hooks/catch/24263741/uepdwbe/";
+    var ASSIGNMENT_MATCH_LIMIT = 20;
 
     function escapeHtml(value) {
       return String(value || "")
@@ -99,6 +102,14 @@
         width: parseLength(mapEl.dataset.svgWidth || data.width),
         height: parseLength(mapEl.dataset.svgHeight || data.height),
       };
+    }
+
+    function getAssignmentWebhookUrl(mapEl) {
+      if (mapEl && mapEl.dataset && mapEl.dataset.assignmentWebhookUrl) {
+        var custom = String(mapEl.dataset.assignmentWebhookUrl).trim();
+        if (custom) return custom;
+      }
+      return ASSIGNMENT_WEBHOOK_DEFAULT_URL;
     }
 
     function normalizeLot(lot) {
@@ -231,6 +242,175 @@
         lot["svg-element-id"] ||
         null
       );
+    }
+
+    function getLotName(lot) {
+      if (!lot) return "";
+      return (
+        lot.name ||
+        lot.title ||
+        lot.lotName ||
+        lot.lot_name ||
+        lot["lot-name"] ||
+        getLotSlug(lot) ||
+        getLotPid(lot) ||
+        ""
+      );
+    }
+
+    function getLotAssignedShapeId(lot) {
+      if (!lot) return "";
+      return (
+        lot.elementSvgId ||
+        lot.element_svg_id ||
+        lot["element-svg-id"] ||
+        lot.svgElementId ||
+        lot.svg_element_id ||
+        lot["svg-element-id"] ||
+        lot.pid ||
+        ""
+      );
+    }
+
+    function normalizeLotSlug(slug) {
+      return String(slug || "")
+        .trim()
+        .toLowerCase();
+    }
+
+    function getLotIdentity(lot) {
+      if (!lot) return null;
+      var slug = String(getLotSlug(lot) || "").trim();
+      var pid = String(getLotPid(lot) || "").trim();
+      return {
+        lotSlug: slug || null,
+        lotName: String(getLotName(lot) || "").trim() || null,
+        lotPid: pid || null,
+      };
+    }
+
+    function getLotComparisonKey(lot) {
+      if (!lot) return "";
+      var slug = normalizeLotSlug(getLotSlug(lot));
+      var pid = String(getLotPid(lot) || "")
+        .trim()
+        .toLowerCase();
+      var name = String(getLotName(lot) || "")
+        .trim()
+        .toLowerCase();
+      return slug + "::" + pid + "::" + name;
+    }
+
+    function buildLotRecord(lot, index) {
+      var slug = String(getLotSlug(lot) || "").trim();
+      var pid = String(getLotPid(lot) || "").trim();
+      var name = String(getLotName(lot) || "").trim() || "Untitled lot";
+      var assignedShape = String(getLotAssignedShapeId(lot) || "").trim();
+      var keyBase =
+        normalizeLotSlug(slug) +
+        "::" +
+        pid.toLowerCase() +
+        "::" +
+        name.toLowerCase();
+      return {
+        optionKey: keyBase + "::" + String(index),
+        slug: slug,
+        pid: pid,
+        name: name,
+        assignedShape: assignedShape,
+        searchText: [name, slug, pid, assignedShape]
+          .join(" ")
+          .trim()
+          .toLowerCase(),
+        displayLabel:
+          name +
+          (slug ? " (" + slug + ")" : pid ? " (" + pid + ")" : ""),
+      };
+    }
+
+    function appendUnique(list, value) {
+      if (!Array.isArray(list) || !value) return;
+      if (list.indexOf(value) !== -1) return;
+      list.push(value);
+    }
+
+    function removeFromList(list, value) {
+      if (!Array.isArray(list) || !value) return;
+      var idx = list.indexOf(value);
+      if (idx === -1) return;
+      list.splice(idx, 1);
+    }
+
+    function buildAssignmentEditorState(lots) {
+      var state = {
+        shapeToLot: {},
+        lotToShapes: {},
+        lotRecords: [],
+        lotsByOptionKey: {},
+      };
+      lots.forEach(function (lot, index) {
+        if (!lot) return;
+        var shapeId = String(getLotAssignedShapeId(lot) || "").trim();
+        if (shapeId) {
+          state.shapeToLot[shapeId] = lot;
+          var slugKey = normalizeLotSlug(getLotSlug(lot));
+          if (slugKey) {
+            if (!state.lotToShapes[slugKey]) state.lotToShapes[slugKey] = [];
+            appendUnique(state.lotToShapes[slugKey], shapeId);
+          }
+        }
+        var record = buildLotRecord(lot, index);
+        state.lotRecords.push(record);
+        state.lotsByOptionKey[record.optionKey] = lot;
+      });
+      return state;
+    }
+
+    function getAssignedLotForShape(shapeId, lotsByPid, assignmentState) {
+      var id = String(shapeId || "").trim();
+      if (!id) return null;
+      if (assignmentState && assignmentState.shapeToLot[id]) {
+        return assignmentState.shapeToLot[id];
+      }
+      return lotsByPid[id] || null;
+    }
+
+    function getDuplicateShapeIds(assignmentState, lot, activeShapeId) {
+      if (!assignmentState || !lot) return [];
+      var slugKey = normalizeLotSlug(getLotSlug(lot));
+      if (!slugKey) return [];
+      var shapeIds = assignmentState.lotToShapes[slugKey] || [];
+      return shapeIds.filter(function (id) {
+        return id !== activeShapeId;
+      });
+    }
+
+    function applyShapeAssignmentChange(assignmentState, shapeId, nextLot) {
+      if (!assignmentState || !shapeId) return;
+      var currentLot = assignmentState.shapeToLot[shapeId] || null;
+
+      if (currentLot) {
+        var oldSlugKey = normalizeLotSlug(getLotSlug(currentLot));
+        if (oldSlugKey && assignmentState.lotToShapes[oldSlugKey]) {
+          removeFromList(assignmentState.lotToShapes[oldSlugKey], shapeId);
+          if (!assignmentState.lotToShapes[oldSlugKey].length) {
+            delete assignmentState.lotToShapes[oldSlugKey];
+          }
+        }
+      }
+
+      if (nextLot) {
+        assignmentState.shapeToLot[shapeId] = nextLot;
+        var newSlugKey = normalizeLotSlug(getLotSlug(nextLot));
+        if (newSlugKey) {
+          if (!assignmentState.lotToShapes[newSlugKey]) {
+            assignmentState.lotToShapes[newSlugKey] = [];
+          }
+          appendUnique(assignmentState.lotToShapes[newSlugKey], shapeId);
+        }
+      } else {
+        delete assignmentState.shapeToLot[shapeId];
+      }
     }
 
     function buildLotsByPid(lots) {
@@ -657,15 +837,7 @@
       if (!lot) {
         return activeElementId || "";
       }
-      var value =
-        lot.elementSvgId ||
-        lot.element_svg_id ||
-        lot["element-svg-id"] ||
-        lot.svgElementId ||
-        lot.svg_element_id ||
-        lot["svg-element-id"] ||
-        lot.pid ||
-        "";
+      var value = getLotAssignedShapeId(lot);
       return value || activeElementId || "";
     }
 
@@ -771,15 +943,394 @@
       return clone;
     }
 
-    function clonePopupCardForLot(lot, preferredSource, activeElementId) {
+    function formatAssignmentDisplayValue(identity) {
+      if (!identity) return "Unassigned";
+      var name = identity.lotName || "Untitled lot";
+      var extras = [];
+      if (identity.lotSlug) extras.push(identity.lotSlug);
+      if (identity.lotPid) extras.push(identity.lotPid);
+      if (!extras.length) return name;
+      return name + " [" + extras.join(" | ") + "]";
+    }
+
+    function appendAssignmentEditor(card, options) {
+      if (!card || !options) return;
+      var activeShapeId = String(options.activeElementId || "").trim();
+      var assignmentState = options.assignmentState;
+      var webhookUrl = String(options.webhookUrl || "").trim();
+      if (!activeShapeId || !assignmentState || !webhookUrl) return;
+
+      if (card.querySelector(".lot-assignment-editor")) return;
+
+      var editor = document.createElement("section");
+      editor.className = "lot-assignment-editor";
+      editor.style.marginTop = "12px";
+      editor.style.padding = "12px";
+      editor.style.border = "1px solid #e5e7eb";
+      editor.style.borderRadius = "10px";
+      editor.style.background = "#f9fafb";
+      editor.style.fontSize = "13px";
+      editor.style.lineHeight = "1.4";
+
+      var heading = document.createElement("div");
+      heading.textContent = "Shape-lot assignment";
+      heading.style.fontWeight = "600";
+      heading.style.marginBottom = "8px";
+
+      var currentRow = document.createElement("div");
+      currentRow.className = "lot-assignment-current";
+      currentRow.style.marginBottom = "10px";
+
+      var currentLabel = document.createElement("strong");
+      currentLabel.textContent = "Current:";
+      currentLabel.style.marginRight = "6px";
+
+      var currentValue = document.createElement("span");
+      currentValue.className = "lot-assignment-current-value";
+      currentValue.style.wordBreak = "break-word";
+
+      currentRow.appendChild(currentLabel);
+      currentRow.appendChild(currentValue);
+
+      var searchInput = document.createElement("input");
+      searchInput.type = "text";
+      searchInput.className = "lot-assignment-search";
+      searchInput.placeholder = "Search lots by name, slug, or shape id";
+      searchInput.style.width = "100%";
+      searchInput.style.boxSizing = "border-box";
+      searchInput.style.padding = "8px";
+      searchInput.style.border = "1px solid #d1d5db";
+      searchInput.style.borderRadius = "8px";
+      searchInput.style.marginBottom = "8px";
+
+      var matchSelect = document.createElement("select");
+      matchSelect.className = "lot-assignment-matches";
+      matchSelect.setAttribute("size", "6");
+      matchSelect.style.width = "100%";
+      matchSelect.style.boxSizing = "border-box";
+      matchSelect.style.padding = "6px";
+      matchSelect.style.border = "1px solid #d1d5db";
+      matchSelect.style.borderRadius = "8px";
+      matchSelect.style.background = "#ffffff";
+      matchSelect.style.marginBottom = "8px";
+
+      var warning = document.createElement("div");
+      warning.className = "lot-assignment-warning";
+      warning.style.display = "none";
+      warning.style.marginBottom = "8px";
+      warning.style.padding = "8px";
+      warning.style.borderRadius = "8px";
+      warning.style.background = "#fef3c7";
+      warning.style.color = "#92400e";
+
+      var status = document.createElement("div");
+      status.className = "lot-assignment-status";
+      status.style.display = "none";
+      status.style.marginBottom = "8px";
+      status.style.padding = "8px";
+      status.style.borderRadius = "8px";
+
+      var actions = document.createElement("div");
+      actions.style.display = "flex";
+      actions.style.gap = "8px";
+
+      var clearButton = document.createElement("button");
+      clearButton.type = "button";
+      clearButton.className = "lot-assignment-clear";
+      clearButton.textContent = "Clear assignment";
+      clearButton.style.flex = "1";
+      clearButton.style.padding = "8px";
+      clearButton.style.border = "1px solid #d1d5db";
+      clearButton.style.borderRadius = "8px";
+      clearButton.style.background = "#ffffff";
+      clearButton.style.cursor = "pointer";
+
+      var saveButton = document.createElement("button");
+      saveButton.type = "button";
+      saveButton.className = "lot-assignment-save";
+      saveButton.textContent = "Save";
+      saveButton.style.flex = "1";
+      saveButton.style.padding = "8px";
+      saveButton.style.border = "1px solid #1f4ed8";
+      saveButton.style.borderRadius = "8px";
+      saveButton.style.background = "#1d4ed8";
+      saveButton.style.color = "#ffffff";
+      saveButton.style.cursor = "pointer";
+
+      actions.appendChild(clearButton);
+      actions.appendChild(saveButton);
+
+      editor.appendChild(heading);
+      editor.appendChild(currentRow);
+      editor.appendChild(searchInput);
+      editor.appendChild(matchSelect);
+      editor.appendChild(warning);
+      editor.appendChild(status);
+      editor.appendChild(actions);
+      card.appendChild(editor);
+
+      var pendingLot = assignmentState.shapeToLot[activeShapeId] || null;
+      var selectedOptionKey = "";
+      var saving = false;
+
+      function getRecordForLot(lot) {
+        if (!lot) return null;
+        var lotKey = getLotComparisonKey(lot);
+        for (var i = 0; i < assignmentState.lotRecords.length; i += 1) {
+          var record = assignmentState.lotRecords[i];
+          var candidate = assignmentState.lotsByOptionKey[record.optionKey];
+          if (getLotComparisonKey(candidate) === lotKey) return record;
+        }
+        return null;
+      }
+
+      function updateCurrentRow() {
+        var identity = getLotIdentity(
+          assignmentState.shapeToLot[activeShapeId] || null,
+        );
+        currentValue.textContent = formatAssignmentDisplayValue(identity);
+      }
+
+      function setStatus(message, tone) {
+        if (!message) {
+          status.style.display = "none";
+          status.textContent = "";
+          return;
+        }
+        status.style.display = "block";
+        status.textContent = message;
+        if (tone === "error") {
+          status.style.background = "#fee2e2";
+          status.style.color = "#991b1b";
+        } else if (tone === "success") {
+          status.style.background = "#dcfce7";
+          status.style.color = "#166534";
+        } else {
+          status.style.background = "#dbeafe";
+          status.style.color = "#1e40af";
+        }
+      }
+
+      function getFilteredRecords(queryText) {
+        var query = String(queryText || "")
+          .trim()
+          .toLowerCase();
+        var records = assignmentState.lotRecords;
+        var filtered;
+        if (!query) {
+          filtered = records.slice(0, ASSIGNMENT_MATCH_LIMIT);
+        } else {
+          filtered = records
+            .filter(function (record) {
+              return record.searchText.indexOf(query) !== -1;
+            })
+            .slice(0, ASSIGNMENT_MATCH_LIMIT);
+        }
+
+        var pendingRecord = getRecordForLot(pendingLot);
+        if (
+          pendingRecord &&
+          filtered.every(function (record) {
+            return record.optionKey !== pendingRecord.optionKey;
+          })
+        ) {
+          filtered.unshift(pendingRecord);
+          if (filtered.length > ASSIGNMENT_MATCH_LIMIT) {
+            filtered = filtered.slice(0, ASSIGNMENT_MATCH_LIMIT);
+          }
+        }
+        return filtered;
+      }
+
+      function getDuplicateIds() {
+        return getDuplicateShapeIds(assignmentState, pendingLot, activeShapeId);
+      }
+
+      function refreshWarning() {
+        var duplicates = getDuplicateIds();
+        if (!pendingLot || !duplicates.length) {
+          warning.style.display = "none";
+          warning.textContent = "";
+          return duplicates;
+        }
+        warning.style.display = "block";
+        warning.textContent =
+          "Warning: this lot is currently assigned to shape(s): " +
+          duplicates.join(", ") +
+          ". Saving will keep duplicate assignments.";
+        return duplicates;
+      }
+
+      function hasPendingChange() {
+        return (
+          getLotComparisonKey(assignmentState.shapeToLot[activeShapeId] || null) !==
+          getLotComparisonKey(pendingLot)
+        );
+      }
+
+      function refreshActionState() {
+        var disabled = saving || !hasPendingChange();
+        saveButton.disabled = disabled;
+        saveButton.style.opacity = disabled ? "0.6" : "1";
+        saveButton.style.cursor = disabled ? "not-allowed" : "pointer";
+        clearButton.disabled = saving;
+        clearButton.style.opacity = saving ? "0.6" : "1";
+      }
+
+      function rebuildSelectOptions() {
+        var records = getFilteredRecords(searchInput.value);
+        matchSelect.innerHTML = "";
+        if (!records.length) {
+          var emptyOption = document.createElement("option");
+          emptyOption.textContent = "No matching lots";
+          emptyOption.disabled = true;
+          matchSelect.appendChild(emptyOption);
+          selectedOptionKey = "";
+          return;
+        }
+
+        records.forEach(function (record) {
+          var option = document.createElement("option");
+          option.value = record.optionKey;
+          option.textContent = record.displayLabel;
+          matchSelect.appendChild(option);
+        });
+
+        var pendingRecord = getRecordForLot(pendingLot);
+        if (pendingRecord) {
+          selectedOptionKey = pendingRecord.optionKey;
+        }
+        if (selectedOptionKey) {
+          matchSelect.value = selectedOptionKey;
+        }
+      }
+
+      function buildPayload(currentLot, nextLot, duplicateIds) {
+        return {
+          eventType: "shape_lot_assignment_update",
+          timestamp: new Date().toISOString(),
+          pageUrl: window.location.href,
+          shape: {
+            elementSvgId: activeShapeId,
+          },
+          currentAssignment: getLotIdentity(currentLot),
+          nextAssignment: getLotIdentity(nextLot),
+          selectionMeta: {
+            queryText: String(searchInput.value || "").trim(),
+            duplicateDetected: duplicateIds.length > 0,
+            duplicateShapeIds: duplicateIds,
+          },
+        };
+      }
+
+      searchInput.addEventListener("input", function () {
+        setStatus("", "");
+        rebuildSelectOptions();
+        refreshWarning();
+        refreshActionState();
+      });
+
+      matchSelect.addEventListener("change", function () {
+        if (!matchSelect.value) return;
+        selectedOptionKey = matchSelect.value;
+        pendingLot = assignmentState.lotsByOptionKey[selectedOptionKey] || null;
+        setStatus("", "");
+        refreshWarning();
+        refreshActionState();
+      });
+
+      clearButton.addEventListener("click", function (event) {
+        event.preventDefault();
+        pendingLot = null;
+        selectedOptionKey = "";
+        matchSelect.selectedIndex = -1;
+        setStatus("", "");
+        refreshWarning();
+        refreshActionState();
+      });
+
+      saveButton.addEventListener("click", function (event) {
+        event.preventDefault();
+        if (saving || !hasPendingChange()) return;
+
+        var currentLot = assignmentState.shapeToLot[activeShapeId] || null;
+        var nextLot = pendingLot;
+        var duplicateIds = getDuplicateIds();
+        var payload = buildPayload(currentLot, nextLot, duplicateIds);
+        saving = true;
+        setStatus("Saving assignment...", "info");
+        refreshActionState();
+
+        fetch(webhookUrl, {
+          method: "POST",
+          mode: "cors",
+          credentials: "omit",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(payload),
+        })
+          .then(function (response) {
+            if (!response.ok) {
+              throw new Error("Webhook request failed (" + response.status + ").");
+            }
+            return response;
+          })
+          .then(function () {
+            applyShapeAssignmentChange(assignmentState, activeShapeId, nextLot);
+            pendingLot = assignmentState.shapeToLot[activeShapeId] || null;
+            var pendingRecord = getRecordForLot(pendingLot);
+            selectedOptionKey = pendingRecord ? pendingRecord.optionKey : "";
+            updateCurrentRow();
+            rebuildSelectOptions();
+            refreshWarning();
+            setStatus("Assignment saved.", "success");
+          })
+          .catch(function (err) {
+            console.warn("Failed to save lot assignment for shape", activeShapeId, err);
+            setStatus(
+              "Unable to save assignment. Check webhook/CORS settings and try again.",
+              "error",
+            );
+          })
+          .finally(function () {
+            saving = false;
+            refreshActionState();
+          });
+      });
+
+      updateCurrentRow();
+      rebuildSelectOptions();
+      refreshWarning();
+      refreshActionState();
+    }
+
+    function clonePopupCardForLot(lot, preferredSource, activeElementId, editorOptions) {
       var source = getPopupSourceForLot(lot, preferredSource || null);
       var clone = clonePopupCardFromSource(source);
-      if (!clone) clone = buildFallbackPopupCard(lot);
-      populatePopupCardFields(clone, lot, activeElementId);
+      if (!clone) {
+        clone = buildFallbackPopupCard(
+          lot || {
+            name: "Unassigned",
+            pid: activeElementId || "",
+          },
+        );
+      }
+      populatePopupCardFields(clone, lot || {}, activeElementId);
+      appendAssignmentEditor(clone, {
+        activeElementId: activeElementId,
+        assignmentState: editorOptions && editorOptions.assignmentState,
+        webhookUrl: editorOptions && editorOptions.webhookUrl,
+      });
       return clone;
     }
 
     function renderLotPopup(lot) {
+      if (!lot) {
+        lot = {
+          name: "Unassigned",
+        };
+      }
       if (typeof window.renderLotPopup === "function") {
         return window.renderLotPopup(lot);
       }
@@ -1039,13 +1590,20 @@
       return escapeHtml(text).replace(/\r?\n/g, "<br>");
     }
 
-    function bindLotEvents(svgRoot, map, lotsByPid, lotsBySlug) {
+    function bindLotEvents(
+      svgRoot,
+      map,
+      lotsByPid,
+      lotsBySlug,
+      assignmentState,
+      webhookUrl,
+    ) {
       var lockedEl = null;
       var hoveredEl = null;
       var overPopup = false;
       var hideTimer = null;
       var boundPopupEl = null;
-      var HIDE_DELAY_MS = 120;
+      var HIDE_DELAY_MS = 220;
       var popup = null;
 
       function clearHideTimer() {
@@ -1064,6 +1622,20 @@
         scheduleHide();
       }
 
+      function onPopupFocusIn() {
+        overPopup = true;
+        clearHideTimer();
+      }
+
+      function onPopupFocusOut() {
+        var popupEl = getActivePopupElement();
+        if (!popupEl) return;
+        var active = document.activeElement;
+        if (active && popupEl.contains(active)) return;
+        overPopup = false;
+        scheduleHide();
+      }
+
       function getActivePopupElement() {
         if (!popup || typeof popup.getElement !== "function") return null;
         return popup.getElement();
@@ -1075,10 +1647,14 @@
         if (boundPopupEl) {
           boundPopupEl.removeEventListener("mouseenter", onPopupMouseEnter);
           boundPopupEl.removeEventListener("mouseleave", onPopupMouseLeave);
+          boundPopupEl.removeEventListener("focusin", onPopupFocusIn);
+          boundPopupEl.removeEventListener("focusout", onPopupFocusOut);
         }
         boundPopupEl = popupEl;
         popupEl.addEventListener("mouseenter", onPopupMouseEnter);
         popupEl.addEventListener("mouseleave", onPopupMouseLeave);
+        popupEl.addEventListener("focusin", onPopupFocusIn);
+        popupEl.addEventListener("focusout", onPopupFocusOut);
       }
 
       function closePopupNow() {
@@ -1108,6 +1684,8 @@
           if (boundPopupEl) {
             boundPopupEl.removeEventListener("mouseenter", onPopupMouseEnter);
             boundPopupEl.removeEventListener("mouseleave", onPopupMouseLeave);
+            boundPopupEl.removeEventListener("focusin", onPopupFocusIn);
+            boundPopupEl.removeEventListener("focusout", onPopupFocusOut);
             boundPopupEl = null;
           }
           overPopup = false;
@@ -1117,11 +1695,36 @@
         return popup;
       }
 
-      function openPopup(el, lot, lock, contentOverride) {
+      function resolveLotForShape(shapeId) {
+        return (
+          getAssignedLotForShape(shapeId, lotsByPid, assignmentState) || null
+        );
+      }
+
+      function buildPopupContentForElement(el, preferredSource) {
+        var shapeId = el && el.id ? String(el.id).trim() : "";
+        if (!shapeId) return null;
+        var lot = resolveLotForShape(shapeId);
+        return clonePopupCardForLot(lot, preferredSource || null, shapeId, {
+          assignmentState: assignmentState,
+          webhookUrl: webhookUrl,
+        });
+      }
+
+      function openPopup(el, lock, contentOverride, preferredSource) {
+        var shapeId = el && el.id ? String(el.id).trim() : "";
+        var lot = resolveLotForShape(shapeId) || {
+          name: "Unassigned",
+          pid: shapeId || "",
+        };
         var latlng = getPopupLatLng(el, map);
         ensurePopup()
           .setLatLng(latlng)
-          .setContent(contentOverride || renderLotPopup(lot))
+          .setContent(
+            contentOverride ||
+              buildPopupContentForElement(el, preferredSource) ||
+              renderLotPopup(lot),
+          )
           .openOn(map);
         bindPopupHoverHandlers();
         if (!boundPopupEl) {
@@ -1143,34 +1746,38 @@
         if (!key) return false;
         var lot = lotsBySlug[key];
         if (!lot) return false;
-        var pid = getLotPid(lot);
+        var pid = "";
+        var lotKey = getLotComparisonKey(lot);
+        Object.keys(assignmentState.shapeToLot || {}).some(function (shapeId) {
+          if (getLotComparisonKey(assignmentState.shapeToLot[shapeId]) === lotKey) {
+            pid = shapeId;
+            return true;
+          }
+          return false;
+        });
+        if (!pid) pid = getLotPid(lot);
         if (!pid) return false;
         var el = svgRoot.querySelector("#" + CSS.escape(pid));
         if (!el) return false;
         var center = getElementCenterLatLng(el, map);
         map.panTo(center, { animate: true });
         if (contentOverride === undefined) {
-          contentOverride = clonePopupCardForLot(lot, preferredSource, el.id);
+          contentOverride = buildPopupContentForElement(el, preferredSource);
         }
-        openPopup(el, lot, true, contentOverride);
+        openPopup(el, true, contentOverride, preferredSource);
         return true;
       }
 
       svgRoot.querySelectorAll(LOT_SELECTOR).forEach(function (el) {
         var pid = el.id;
-        if (!pid || !lotsByPid[pid]) return;
+        if (!pid) return;
 
         el.addEventListener("mouseenter", function () {
           el.classList.add("is-hovered");
           hoveredEl = el;
           clearHideTimer();
           if (lockedEl && lockedEl !== el) return;
-          openPopup(
-            el,
-            lotsByPid[pid],
-            false,
-            clonePopupCardForLot(lotsByPid[pid], null, el.id),
-          );
+          openPopup(el, false);
         });
 
         el.addEventListener("mouseleave", function () {
@@ -1191,12 +1798,7 @@
             return;
           }
 
-          openPopup(
-            el,
-            lotsByPid[pid],
-            true,
-            clonePopupCardForLot(lotsByPid[pid], null, el.id),
-          );
+          openPopup(el, true);
         });
       });
 
@@ -1273,7 +1875,14 @@
       });
     }
 
-    function initSvgMap(mapEl, mapData, lotsByPid, lotsBySlug) {
+    function initSvgMap(
+      mapEl,
+      mapData,
+      lotsByPid,
+      lotsBySlug,
+      assignmentState,
+      webhookUrl,
+    ) {
       if (!mapData.svgUrl) {
         console.warn("Missing SVG URL for map.");
         return;
@@ -1312,7 +1921,14 @@
         var svgRoot = overlay.getElement();
         if (svgRoot) {
           svgRoot.setAttribute("preserveAspectRatio", "xMidYMid meet");
-          bindLotEvents(svgRoot, map, lotsByPid, lotsBySlug);
+          bindLotEvents(
+            svgRoot,
+            map,
+            lotsByPid,
+            lotsBySlug,
+            assignmentState,
+            webhookUrl,
+          );
           addLotIdLabels(svgRoot);
         }
       }
@@ -1392,18 +2008,35 @@
       }
 
       var mapData = getMapData(mapEl);
+      var webhookUrl = getAssignmentWebhookUrl(mapEl);
       getLotsData()
         .then(function (lots) {
           var lotsByPid = buildLotsByPid(lots);
           var lotsBySlug = buildLotsBySlug(lots);
-          initSvgMap(mapEl, mapData, lotsByPid, lotsBySlug);
+          var assignmentState = buildAssignmentEditorState(lots);
+          initSvgMap(
+            mapEl,
+            mapData,
+            lotsByPid,
+            lotsBySlug,
+            assignmentState,
+            webhookUrl,
+          );
         })
         .catch(function (err) {
           console.error("Failed to load lots data:", err);
           var fallbackLots = getLotsFromRoot(document);
           var lotsByPid = buildLotsByPid(fallbackLots);
           var lotsBySlug = buildLotsBySlug(fallbackLots);
-          initSvgMap(mapEl, mapData, lotsByPid, lotsBySlug);
+          var assignmentState = buildAssignmentEditorState(fallbackLots);
+          initSvgMap(
+            mapEl,
+            mapData,
+            lotsByPid,
+            lotsBySlug,
+            assignmentState,
+            webhookUrl,
+          );
         });
     }
 
