@@ -1394,7 +1394,7 @@
         refreshWarning();
 
         saving = true;
-        setStatus("Sending assignment to Zapier...", "info");
+        setStatus("Saving assignment...", "info");
         refreshActionState();
 
         fetch(webhookUrl, {
@@ -1407,10 +1407,7 @@
             if (typeof scheduleLotsRefresh === "function") {
               scheduleLotsRefresh(changedShapeIds || []);
             }
-            setStatus(
-              "Assignment request sent to Zapier. Refresh if the CMS view is delayed.",
-              "success",
-            );
+            setStatus("Assignment saved.", "success");
           })
           .catch(function (err) {
             console.warn("Failed to save lot assignment for shape", activeShapeId, err);
