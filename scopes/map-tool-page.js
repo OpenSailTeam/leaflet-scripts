@@ -13,6 +13,8 @@
     var ASSIGNMENT_WEBHOOK_DEFAULT_URL =
       "https://hooks.zapier.com/hooks/catch/24263741/uepdwbe/";
     var ASSIGNMENT_MATCH_LIMIT = 20;
+    var ASSIGNMENT_REFRESH_DELAY_MS = 2000;
+    var ASSIGNMENT_OPTIMISTIC_HOLD_MS = 15000;
 
     function escapeHtml(value) {
       return String(value || "")
@@ -341,6 +343,20 @@
       list.splice(idx, 1);
     }
 
+    function hasOwn(object, key) {
+      return Object.prototype.hasOwnProperty.call(object || {}, key);
+    }
+
+    function replaceObjectContents(target, source) {
+      if (!target || !source) return;
+      Object.keys(target).forEach(function (key) {
+        delete target[key];
+      });
+      Object.keys(source).forEach(function (key) {
+        target[key] = source[key];
+      });
+    }
+
     function buildAssignmentEditorState(lots) {
       var state = {
         shapeToLot: {},
@@ -369,7 +385,11 @@
     function getAssignedLotForShape(shapeId, lotsByPid, assignmentState) {
       var id = String(shapeId || "").trim();
       if (!id) return null;
-      if (assignmentState && assignmentState.shapeToLot[id]) {
+      if (
+        assignmentState &&
+        assignmentState.shapeToLot &&
+        hasOwn(assignmentState.shapeToLot, id)
+      ) {
         return assignmentState.shapeToLot[id];
       }
       return lotsByPid[id] || null;
@@ -387,30 +407,79 @@
 
     function applyShapeAssignmentChange(assignmentState, shapeId, nextLot) {
       if (!assignmentState || !shapeId) return;
-      var currentLot = assignmentState.shapeToLot[shapeId] || null;
+      var activeShapeId = String(shapeId || "").trim();
+      if (!activeShapeId) return;
+      var changedShapeIds = [];
 
-      if (currentLot) {
-        var oldSlugKey = normalizeLotSlug(getLotSlug(currentLot));
-        if (oldSlugKey && assignmentState.lotToShapes[oldSlugKey]) {
-          removeFromList(assignmentState.lotToShapes[oldSlugKey], shapeId);
-          if (!assignmentState.lotToShapes[oldSlugKey].length) {
-            delete assignmentState.lotToShapes[oldSlugKey];
-          }
-        }
+      function markChanged(targetShapeId) {
+        if (!targetShapeId) return;
+        if (changedShapeIds.indexOf(targetShapeId) !== -1) return;
+        changedShapeIds.push(targetShapeId);
       }
 
-      if (nextLot) {
-        assignmentState.shapeToLot[shapeId] = nextLot;
-        var newSlugKey = normalizeLotSlug(getLotSlug(nextLot));
-        if (newSlugKey) {
-          if (!assignmentState.lotToShapes[newSlugKey]) {
-            assignmentState.lotToShapes[newSlugKey] = [];
+      function clearShapeAssignment(targetShapeId) {
+        if (!targetShapeId) return;
+        var currentLot =
+          hasOwn(assignmentState.shapeToLot, targetShapeId) &&
+          assignmentState.shapeToLot[targetShapeId]
+            ? assignmentState.shapeToLot[targetShapeId]
+            : null;
+        if (currentLot) {
+          var oldSlugKey = normalizeLotSlug(getLotSlug(currentLot));
+          if (oldSlugKey && assignmentState.lotToShapes[oldSlugKey]) {
+            removeFromList(assignmentState.lotToShapes[oldSlugKey], targetShapeId);
+            if (!assignmentState.lotToShapes[oldSlugKey].length) {
+              delete assignmentState.lotToShapes[oldSlugKey];
+            }
           }
-          appendUnique(assignmentState.lotToShapes[newSlugKey], shapeId);
         }
-      } else {
-        delete assignmentState.shapeToLot[shapeId];
+        assignmentState.shapeToLot[targetShapeId] = null;
+        markChanged(targetShapeId);
       }
+
+      clearShapeAssignment(activeShapeId);
+
+      if (!nextLot) return changedShapeIds;
+
+      var newSlugKey = normalizeLotSlug(getLotSlug(nextLot));
+      if (newSlugKey) {
+        var existingShapes = (assignmentState.lotToShapes[newSlugKey] || []).slice();
+        existingShapes.forEach(function (otherShapeId) {
+          if (otherShapeId === activeShapeId) return;
+          clearShapeAssignment(otherShapeId);
+        });
+      }
+
+      assignmentState.shapeToLot[activeShapeId] = nextLot;
+      markChanged(activeShapeId);
+      if (newSlugKey) {
+        if (!assignmentState.lotToShapes[newSlugKey]) {
+          assignmentState.lotToShapes[newSlugKey] = [];
+        }
+        appendUnique(assignmentState.lotToShapes[newSlugKey], activeShapeId);
+      }
+      return changedShapeIds;
+    }
+
+    function snapshotAssignmentState(assignmentState) {
+      var shapeToLot = {};
+      var lotToShapes = {};
+      Object.keys(assignmentState.shapeToLot || {}).forEach(function (shapeId) {
+        shapeToLot[shapeId] = assignmentState.shapeToLot[shapeId];
+      });
+      Object.keys(assignmentState.lotToShapes || {}).forEach(function (slug) {
+        lotToShapes[slug] = (assignmentState.lotToShapes[slug] || []).slice();
+      });
+      return {
+        shapeToLot: shapeToLot,
+        lotToShapes: lotToShapes,
+      };
+    }
+
+    function restoreAssignmentState(assignmentState, snapshot) {
+      if (!assignmentState || !snapshot) return;
+      assignmentState.shapeToLot = snapshot.shapeToLot || {};
+      assignmentState.lotToShapes = snapshot.lotToShapes || {};
     }
 
     function buildLotsByPid(lots) {
@@ -1309,6 +1378,16 @@
         var duplicateIds = getDuplicateIds();
         var payload = buildPayload(currentLot, nextLot, duplicateIds);
         var formBody = buildWebhookFormBody(payload);
+        var snapshot = snapshotAssignmentState(assignmentState);
+
+        applyShapeAssignmentChange(assignmentState, activeShapeId, nextLot);
+        pendingLot = assignmentState.shapeToLot[activeShapeId] || null;
+        var pendingRecord = getRecordForLot(pendingLot);
+        selectedOptionKey = pendingRecord ? pendingRecord.optionKey : "";
+        updateCurrentRow();
+        rebuildSelectOptions();
+        refreshWarning();
+
         saving = true;
         setStatus("Sending assignment to Zapier...", "info");
         refreshActionState();
@@ -1320,13 +1399,6 @@
           body: formBody,
         })
           .then(function () {
-            applyShapeAssignmentChange(assignmentState, activeShapeId, nextLot);
-            pendingLot = assignmentState.shapeToLot[activeShapeId] || null;
-            var pendingRecord = getRecordForLot(pendingLot);
-            selectedOptionKey = pendingRecord ? pendingRecord.optionKey : "";
-            updateCurrentRow();
-            rebuildSelectOptions();
-            refreshWarning();
             setStatus(
               "Assignment request sent to Zapier. Refresh if the CMS view is delayed.",
               "success",
@@ -1334,6 +1406,13 @@
           })
           .catch(function (err) {
             console.warn("Failed to save lot assignment for shape", activeShapeId, err);
+            restoreAssignmentState(assignmentState, snapshot);
+            pendingLot = assignmentState.shapeToLot[activeShapeId] || null;
+            var rollbackRecord = getRecordForLot(pendingLot);
+            selectedOptionKey = rollbackRecord ? rollbackRecord.optionKey : "";
+            updateCurrentRow();
+            rebuildSelectOptions();
+            refreshWarning();
             setStatus(
               "Unable to send request. Check network/privacy blockers and try again.",
               "error",
@@ -1651,6 +1730,111 @@
       var boundPopupEl = null;
       var HIDE_DELAY_MS = 220;
       var popup = null;
+      var assignmentRefreshTimer = null;
+      var assignmentRefreshInFlight = false;
+      var assignmentRefreshQueued = false;
+      var optimisticHoldByShape = {};
+
+      function cleanupExpiredOptimisticHolds() {
+        var now = Date.now();
+        Object.keys(optimisticHoldByShape).forEach(function (shapeId) {
+          if (optimisticHoldByShape[shapeId] <= now) {
+            delete optimisticHoldByShape[shapeId];
+          }
+        });
+      }
+
+      function markOptimisticHolds(shapeIds) {
+        if (!Array.isArray(shapeIds) || !shapeIds.length) return;
+        var until = Date.now() + ASSIGNMENT_OPTIMISTIC_HOLD_MS;
+        shapeIds.forEach(function (shapeId) {
+          if (!shapeId) return;
+          optimisticHoldByShape[shapeId] = until;
+        });
+      }
+
+      function overlayOptimisticAssignments(nextState) {
+        cleanupExpiredOptimisticHolds();
+        var heldShapeIds = Object.keys(optimisticHoldByShape);
+        if (!heldShapeIds.length) return;
+
+        heldShapeIds.forEach(function (shapeId) {
+          Object.keys(nextState.lotToShapes || {}).forEach(function (slugKey) {
+            removeFromList(nextState.lotToShapes[slugKey], shapeId);
+            if (!nextState.lotToShapes[slugKey].length) {
+              delete nextState.lotToShapes[slugKey];
+            }
+          });
+
+          var currentLot =
+            hasOwn(assignmentState.shapeToLot, shapeId) &&
+            assignmentState.shapeToLot[shapeId]
+              ? assignmentState.shapeToLot[shapeId]
+              : null;
+          nextState.shapeToLot[shapeId] = currentLot;
+          if (currentLot) {
+            var currentSlugKey = normalizeLotSlug(getLotSlug(currentLot));
+            if (currentSlugKey) {
+              if (!nextState.lotToShapes[currentSlugKey]) {
+                nextState.lotToShapes[currentSlugKey] = [];
+              }
+              appendUnique(nextState.lotToShapes[currentSlugKey], shapeId);
+            }
+          }
+        });
+      }
+
+      function applyRefreshedLotsData(lots) {
+        var nextLotsByPid = buildLotsByPid(lots);
+        var nextLotsBySlug = buildLotsBySlug(lots);
+        var nextAssignmentState = buildAssignmentEditorState(lots);
+
+        overlayOptimisticAssignments(nextAssignmentState);
+
+        replaceObjectContents(lotsByPid, nextLotsByPid);
+        replaceObjectContents(lotsBySlug, nextLotsBySlug);
+        replaceObjectContents(assignmentState.shapeToLot, nextAssignmentState.shapeToLot);
+        replaceObjectContents(assignmentState.lotToShapes, nextAssignmentState.lotToShapes);
+        assignmentState.lotRecords = nextAssignmentState.lotRecords;
+        replaceObjectContents(
+          assignmentState.lotsByOptionKey,
+          nextAssignmentState.lotsByOptionKey,
+        );
+      }
+
+      function refreshLotsInBackground() {
+        if (assignmentRefreshInFlight) {
+          assignmentRefreshQueued = true;
+          return;
+        }
+
+        assignmentRefreshInFlight = true;
+        getLotsData()
+          .then(function (latestLots) {
+            applyRefreshedLotsData(latestLots);
+          })
+          .catch(function (err) {
+            console.warn("Background lot refresh failed:", err);
+          })
+          .finally(function () {
+            assignmentRefreshInFlight = false;
+            if (!assignmentRefreshQueued) return;
+            assignmentRefreshQueued = false;
+            refreshLotsInBackground();
+          });
+      }
+
+      function scheduleLotsRefresh(changedShapeIds) {
+        markOptimisticHolds(changedShapeIds);
+        if (assignmentRefreshTimer) {
+          clearTimeout(assignmentRefreshTimer);
+          assignmentRefreshTimer = null;
+        }
+        assignmentRefreshTimer = setTimeout(function () {
+          assignmentRefreshTimer = null;
+          refreshLotsInBackground();
+        }, ASSIGNMENT_REFRESH_DELAY_MS);
+      }
 
       function clearHideTimer() {
         if (!hideTimer) return;
