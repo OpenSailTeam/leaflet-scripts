@@ -1157,7 +1157,7 @@
         warning.textContent =
           "Warning: this lot is currently assigned to shape(s): " +
           duplicates.join(", ") +
-          ". Saving will keep duplicate assignments.";
+          ". Saving will reassign the lot; the SVG ID will be cleared from the previous lot.";
         return duplicates;
       }
 
