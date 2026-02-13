@@ -88,6 +88,22 @@
       };
     }
 
+    function measureTextWidth(text, font) {
+      var value = String(text || "");
+      if (!value) return 0;
+      var canvas = measureTextWidth._canvas;
+      if (!canvas) {
+        canvas = document.createElement("canvas");
+        measureTextWidth._canvas = canvas;
+      }
+      var ctx = canvas.getContext("2d");
+      if (!ctx) {
+        return value.length * 8;
+      }
+      ctx.font = font || "13px sans-serif";
+      return ctx.measureText(value).width;
+    }
+
     function getMapData(mapEl) {
       var data = parseJsonScript("map-data") || {};
       var svgUrl =
@@ -324,9 +340,7 @@
           .join(" ")
           .trim()
           .toLowerCase(),
-        displayLabel:
-          name +
-          (slug ? " (" + slug + ")" : pid ? " (" + pid + ")" : ""),
+        displayLabel: name,
       };
     }
 
@@ -1076,7 +1090,8 @@
       var matchSelect = document.createElement("select");
       matchSelect.className = "lot-assignment-matches";
       matchSelect.setAttribute("size", "6");
-      matchSelect.style.width = "100%";
+      matchSelect.style.width = "auto";
+      matchSelect.style.minWidth = "100%";
       matchSelect.style.boxSizing = "border-box";
       matchSelect.style.padding = "6px";
       matchSelect.style.border = "1px solid #d1d5db";
@@ -1247,6 +1262,28 @@
         clearButton.style.opacity = saving ? "0.6" : "1";
       }
 
+      function updateEditorWidth(records) {
+        var labels = records || [];
+        var font = "13px sans-serif";
+        if (window.getComputedStyle) {
+          var style = window.getComputedStyle(matchSelect);
+          if (style && style.font) font = style.font;
+        }
+        var maxTextWidth = 0;
+        labels.forEach(function (record) {
+          var width = measureTextWidth(record.displayLabel || "", font);
+          if (width > maxTextWidth) maxTextWidth = width;
+        });
+        var placeholderWidth = measureTextWidth(
+          searchInput.placeholder || "",
+          font,
+        );
+        if (placeholderWidth > maxTextWidth) maxTextWidth = placeholderWidth;
+        var requiredWidth = Math.max(360, Math.ceil(maxTextWidth + 130));
+        editor.style.width = requiredWidth + "px";
+        editor.style.maxWidth = "none";
+      }
+
       function rebuildSelectOptions() {
         var records = getFilteredRecords(searchInput.value);
         matchSelect.innerHTML = "";
@@ -1256,6 +1293,7 @@
           emptyOption.disabled = true;
           matchSelect.appendChild(emptyOption);
           selectedOptionKey = "";
+          updateEditorWidth([]);
           return;
         }
 
@@ -1273,6 +1311,7 @@
         if (selectedOptionKey) {
           matchSelect.value = selectedOptionKey;
         }
+        updateEditorWidth(records);
       }
 
       function buildPayload(currentLot, nextLot, duplicateIds) {
@@ -1914,6 +1953,7 @@
           closeButton: false,
           autoPan: true,
           offset: [0, -8],
+          maxWidth: 5000,
           className: "lot-popup-shell",
         });
         popup.on("remove", function () {
@@ -1929,6 +1969,20 @@
           lockedEl = null;
         });
         return popup;
+      }
+
+      function removePopupWidthClamp() {
+        var popupEl = getActivePopupElement();
+        if (!popupEl) return;
+        var wrapper = popupEl.querySelector(".leaflet-popup-content-wrapper");
+        if (wrapper) {
+          wrapper.style.maxWidth = "none";
+        }
+        var content = popupEl.querySelector(".leaflet-popup-content");
+        if (content) {
+          content.style.maxWidth = "none";
+          content.style.width = "max-content";
+        }
       }
 
       function resolveLotForShape(shapeId) {
@@ -1963,10 +2017,12 @@
               renderLotPopup(lot),
           )
           .openOn(map);
+        removePopupWidthClamp();
         bindPopupHoverHandlers();
         if (!boundPopupEl) {
           setTimeout(bindPopupHoverHandlers, 0);
         }
+        setTimeout(removePopupWidthClamp, 0);
 
         if (lock) {
           if (lockedEl && lockedEl !== el) {
