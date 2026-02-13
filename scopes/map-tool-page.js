@@ -1223,6 +1223,57 @@
         };
       }
 
+      function toWebhookField(value) {
+        if (value === undefined || value === null) return "";
+        if (typeof value === "string") return value;
+        if (typeof value === "number" || typeof value === "boolean") {
+          return String(value);
+        }
+        try {
+          return JSON.stringify(value);
+        } catch (err) {
+          return String(value);
+        }
+      }
+
+      function buildWebhookFormBody(payload) {
+        var form = new URLSearchParams();
+        form.set("eventType", payload.eventType || "");
+        form.set("timestamp", payload.timestamp || "");
+        form.set("pageUrl", payload.pageUrl || "");
+        form.set(
+          "elementSvgId",
+          payload.shape && payload.shape.elementSvgId
+            ? payload.shape.elementSvgId
+            : "",
+        );
+        form.set("currentAssignment", toWebhookField(payload.currentAssignment));
+        form.set("nextAssignment", toWebhookField(payload.nextAssignment));
+        form.set(
+          "selectionQueryText",
+          payload.selectionMeta && payload.selectionMeta.queryText
+            ? payload.selectionMeta.queryText
+            : "",
+        );
+        form.set(
+          "duplicateDetected",
+          toWebhookField(
+            !!(
+              payload.selectionMeta && payload.selectionMeta.duplicateDetected
+            ),
+          ),
+        );
+        form.set(
+          "duplicateShapeIds",
+          toWebhookField(
+            (payload.selectionMeta && payload.selectionMeta.duplicateShapeIds) ||
+              [],
+          ),
+        );
+        form.set("payloadJson", JSON.stringify(payload));
+        return form;
+      }
+
       searchInput.addEventListener("input", function () {
         setStatus("", "");
         rebuildSelectOptions();
@@ -1257,25 +1308,17 @@
         var nextLot = pendingLot;
         var duplicateIds = getDuplicateIds();
         var payload = buildPayload(currentLot, nextLot, duplicateIds);
+        var formBody = buildWebhookFormBody(payload);
         saving = true;
-        setStatus("Saving assignment...", "info");
+        setStatus("Sending assignment to Zapier...", "info");
         refreshActionState();
 
         fetch(webhookUrl, {
           method: "POST",
-          mode: "cors",
-          credentials: "omit",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(payload),
+          mode: "no-cors",
+          cache: "no-store",
+          body: formBody,
         })
-          .then(function (response) {
-            if (!response.ok) {
-              throw new Error("Webhook request failed (" + response.status + ").");
-            }
-            return response;
-          })
           .then(function () {
             applyShapeAssignmentChange(assignmentState, activeShapeId, nextLot);
             pendingLot = assignmentState.shapeToLot[activeShapeId] || null;
@@ -1284,12 +1327,15 @@
             updateCurrentRow();
             rebuildSelectOptions();
             refreshWarning();
-            setStatus("Assignment saved.", "success");
+            setStatus(
+              "Assignment request sent to Zapier. Refresh if the CMS view is delayed.",
+              "success",
+            );
           })
           .catch(function (err) {
             console.warn("Failed to save lot assignment for shape", activeShapeId, err);
             setStatus(
-              "Unable to save assignment. Check webhook/CORS settings and try again.",
+              "Unable to send request. Check network/privacy blockers and try again.",
               "error",
             );
           })
