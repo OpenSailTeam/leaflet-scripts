@@ -708,6 +708,40 @@
       });
     }
 
+    function isUsefulHref(href) {
+      var value = String(href || "").trim();
+      if (!value) return false;
+      if (value === "#") return false;
+      if (/^javascript:/i.test(value)) return false;
+      if (value === window.location.href + "#") return false;
+      return true;
+    }
+
+    function removeEmptyCardDescriptionBlocks(card) {
+      if (!card) return;
+      card.querySelectorAll(".lot-card-description").forEach(function (section) {
+        if (!section || !section.parentNode) return;
+
+        var hasUsefulImage = Array.prototype.some.call(
+          section.querySelectorAll("img"),
+          function (img) {
+            var src = String(img.getAttribute("src") || "").trim();
+            return !!src && src !== "#" && src !== "about:blank";
+          },
+        );
+
+        var hasUsefulLink = Array.prototype.some.call(
+          section.querySelectorAll("a"),
+          function (link) {
+            return isUsefulHref(link.getAttribute("href"));
+          },
+        );
+
+        if (hasUsefulImage || hasUsefulLink) return;
+        section.parentNode.removeChild(section);
+      });
+    }
+
     function fallbackCopyText(text) {
       try {
         var textarea = document.createElement("textarea");
@@ -1059,6 +1093,7 @@
         clone.style.removeProperty("display");
       }
       removeLotDetailsFromCard(clone);
+      removeEmptyCardDescriptionBlocks(clone);
       clone.classList.add("lot-popup-card");
       return clone;
     }
@@ -1080,7 +1115,7 @@
 
       var editor = document.createElement("section");
       editor.className = "lot-assignment-editor";
-      editor.style.marginTop = "12px";
+      editor.style.marginTop = "4px";
       editor.style.padding = "12px";
       editor.style.border = "1px solid #e5e7eb";
       editor.style.borderRadius = "10px";
