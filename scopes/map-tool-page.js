@@ -667,6 +667,47 @@
       });
     }
 
+    function removeLotDetailsFromCard(card) {
+      if (!card) return;
+      var selectors = [
+        "[data-lot-field='details']",
+        "[data-lot-field='lotDetails']",
+        "[data-lot-field='lot_details']",
+        "[data-lot-field='lot-details']",
+        "[data-lot-section='details']",
+        ".lot-popup__details",
+        ".lot-details",
+      ];
+      card.querySelectorAll(selectors.join(",")).forEach(function (el) {
+        if (el && el.parentNode) {
+          el.parentNode.removeChild(el);
+        }
+      });
+
+      card.querySelectorAll("*").forEach(function (el) {
+        if (!el || !el.parentNode || el === card) return;
+        var text = String(el.textContent || "")
+          .trim()
+          .toLowerCase();
+        if (text !== "lot details") return;
+        if (el.children && el.children.length) return;
+        el.parentNode.removeChild(el);
+      });
+
+      card.querySelectorAll("div,section,article").forEach(function (el) {
+        if (!el || !el.parentNode || el === card) return;
+        var className = String(el.className || "").toLowerCase();
+        if (className.indexOf("details") === -1) return;
+        if (el.querySelector("input,select,button,a,img")) return;
+        var text = String(el.textContent || "")
+          .replace(/\s+/g, " ")
+          .trim()
+          .toLowerCase();
+        if (text && text !== "lot details") return;
+        el.parentNode.removeChild(el);
+      });
+    }
+
     function fallbackCopyText(text) {
       try {
         var textarea = document.createElement("textarea");
@@ -940,7 +981,6 @@
       var title = String(lot.name || lot.pid || "Lot");
       var status = getLotStatusLabel(lot);
       var price = formatLotPrice(getLotPrice(lot));
-      var details = getLotDetailsHtml(lot);
 
       var headingSelectors = [
         "[data-lot-field='name']",
@@ -974,11 +1014,7 @@
         ["[data-lot-field='price']", ".lot-info"],
         price || "",
       );
-      setFirstMatchingHtml(
-        card,
-        ["[data-lot-field='details']", ".w-richtext", ".lot-details"],
-        details || "",
-      );
+      removeLotDetailsFromCard(card);
     }
 
     function buildFallbackPopupCard(lot) {
@@ -1022,18 +1058,14 @@
       if (clone.style && clone.style.display === "none") {
         clone.style.removeProperty("display");
       }
+      removeLotDetailsFromCard(clone);
       clone.classList.add("lot-popup-card");
       return clone;
     }
 
     function formatAssignmentDisplayValue(identity) {
       if (!identity) return "Unassigned";
-      var name = identity.lotName || "Untitled lot";
-      var extras = [];
-      if (identity.lotSlug) extras.push(identity.lotSlug);
-      if (identity.lotPid) extras.push(identity.lotPid);
-      if (!extras.length) return name;
-      return name + " [" + extras.join(" | ") + "]";
+      return identity.lotName || "Untitled lot";
     }
 
     function appendAssignmentEditor(card, options) {
@@ -1508,7 +1540,6 @@
       var statusLabel = getLotStatusLabel(lot);
       var price = formatLotPrice(getLotPrice(lot));
       var logoUrl = getLotLogoUrl(lot);
-      var details = getLotDetailsHtml(lot);
       var meta = statusLabel
         ? '<div class="lot-popup__meta">' + escapeHtml(statusLabel) + "</div>"
         : "";
@@ -1522,9 +1553,6 @@
           title +
           ' logo"></div>'
         : "";
-      var detailsHtml = details
-        ? '<div class="lot-popup__details">' + details + "</div>"
-        : "";
       return (
         '<div class="lot-popup">' +
         logoHtml +
@@ -1533,7 +1561,6 @@
         "</div>" +
         priceHtml +
         meta +
-        detailsHtml +
         "</div>"
       );
     }
