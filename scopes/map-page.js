@@ -1034,6 +1034,25 @@
       return lot.slug || lot.lotSlug || lot.lot_slug || lot["lot-slug"] || "";
     }
 
+    function getLotName(lot) {
+      if (!lot) return "";
+      return (
+        lot.name ||
+        lot.title ||
+        lot.lotName ||
+        lot.lot_name ||
+        lot["lot-name"] ||
+        ""
+      );
+    }
+
+    function normalizeLotNameKey(value) {
+      return String(value || "")
+        .trim()
+        .replace(/\s+/g, " ")
+        .toLowerCase();
+    }
+
     function getLotDetailsHtmlFromDom(slug) {
       if (!slug) return "";
       var el = document.getElementById(slug);
@@ -1193,6 +1212,85 @@
         return true;
       }
 
+      function focusLotByName(name, contentOverride, preferredSource) {
+        var target = normalizeLotNameKey(name);
+        if (!target) return false;
+
+        var matches = [];
+        Object.keys(lotsByPid || {}).forEach(function (pidKey) {
+          var lot = lotsByPid[pidKey];
+          if (!lot) return;
+          if (normalizeLotNameKey(getLotName(lot)) !== target) return;
+          var pid = getLotPid(lot);
+          if (!pid) return;
+          var el = svgRoot.querySelector("#" + CSS.escape(pid));
+          if (!el) return;
+          matches.push({
+            lot: lot,
+            pid: pid,
+          });
+        });
+
+        if (!matches.length) return false;
+        if (matches.length > 1) {
+          console.warn("Ambiguous lot name for deep-link:", name);
+          return false;
+        }
+
+        var match = matches[0];
+        var lotSlug = getLotSlug(match.lot);
+        if (lotSlug) {
+          return focusLotBySlug(lotSlug, contentOverride, preferredSource);
+        }
+
+        var el = svgRoot.querySelector("#" + CSS.escape(match.pid));
+        if (!el) return false;
+        var center = getElementCenterLatLng(el, map);
+        map.panTo(center, { animate: true });
+        if (contentOverride === undefined) {
+          contentOverride = clonePopupCardForLot(match.lot, preferredSource);
+        }
+        openPopup(el, match.lot, true, contentOverride);
+        return true;
+      }
+
+      function getDeepLinkTargetFromUrl() {
+        if (!window.location || !window.location.search) return null;
+        var params = null;
+        try {
+          params = new URLSearchParams(window.location.search);
+        } catch (err) {
+          return null;
+        }
+        if (!params) return null;
+        var lotSlug = String(params.get("khLotSlug") || "").trim();
+        var lotName = String(params.get("khLotName") || "").trim();
+        if (!lotSlug && !lotName) return null;
+        return {
+          lotSlug: lotSlug,
+          lotName: lotName,
+        };
+      }
+
+      var deepLinkTarget = getDeepLinkTargetFromUrl();
+      var deepLinkHandled = false;
+
+      function openDeepLinkedLotOnce() {
+        if (deepLinkHandled || !deepLinkTarget) return;
+        deepLinkHandled = true;
+
+        var opened = false;
+        if (deepLinkTarget.lotSlug) {
+          opened = focusLotBySlug(deepLinkTarget.lotSlug);
+        }
+        if (!opened && deepLinkTarget.lotName) {
+          opened = focusLotByName(deepLinkTarget.lotName);
+        }
+        if (!opened) {
+          console.warn("Unable to deep-link lot popup:", deepLinkTarget);
+        }
+      }
+
       svgRoot.querySelectorAll(LOT_SELECTOR).forEach(function (el) {
         var pid = el.id;
         if (!pid || !lotsByPid[pid]) return;
@@ -1257,6 +1355,8 @@
         event.preventDefault();
         event.stopPropagation();
       });
+
+      setTimeout(openDeepLinkedLotOnce, 0);
     }
 
     function addStatusDots(svgRoot, map, lotsByPid) {
