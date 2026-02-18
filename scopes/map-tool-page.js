@@ -12,7 +12,6 @@
     var MAP_ID = "map";
     var ASSIGNMENT_WEBHOOK_DEFAULT_URL =
       "https://hooks.zapier.com/hooks/catch/24263741/uepdwbe/";
-    var ASSIGNMENT_MATCH_LIMIT = 20;
     var ASSIGNMENT_REFRESH_DELAY_MS = 2000;
     var ASSIGNMENT_OPTIMISTIC_HOLD_MS = 15000;
 
@@ -1270,13 +1269,11 @@
         var records = assignmentState.lotRecords;
         var filtered;
         if (!query) {
-          filtered = records.slice(0, ASSIGNMENT_MATCH_LIMIT);
+          filtered = records.slice();
         } else {
-          filtered = records
-            .filter(function (record) {
-              return record.searchText.indexOf(query) !== -1;
-            })
-            .slice(0, ASSIGNMENT_MATCH_LIMIT);
+          filtered = records.filter(function (record) {
+            return record.searchText.indexOf(query) !== -1;
+          });
         }
 
         var pendingRecord = getRecordForLot(pendingLot);
@@ -1287,9 +1284,6 @@
           })
         ) {
           filtered.unshift(pendingRecord);
-          if (filtered.length > ASSIGNMENT_MATCH_LIMIT) {
-            filtered = filtered.slice(0, ASSIGNMENT_MATCH_LIMIT);
-          }
         }
         return filtered;
       }
