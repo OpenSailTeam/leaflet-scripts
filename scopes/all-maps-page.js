@@ -180,6 +180,14 @@
       var info = data.dealInformation ? String(data.dealInformation) : "";
       var link = data.url ? String(data.url) : "";
       var headerStyle = data.color ? ' style="background:' + data.color + ';"' : "";
+      var buttonColor = data.color ? String(data.color) : "#b0d973";
+      var buttonStyle =
+        ' style="display:block;margin:16px;padding:12px 16px;box-sizing:border-box;' +
+        "width:calc(100% - 32px);" +
+        "border-radius:999px;" +
+        "background:" +
+        buttonColor +
+        ';color:#fff;text-align:center;text-decoration:none;font-weight:600;"';
       var html =
         '<div class="map-boundary-popup__header"' +
         headerStyle +
@@ -197,7 +205,9 @@
         html +=
           '<a class="map-boundary-popup__link" href="' +
           link +
-          '">View area</a>';
+          '"' +
+          buttonStyle +
+          '>View area</a>';
       }
       html += "</div>";
       return '<div class="map-boundary-popup__content">' + html + "</div>";
