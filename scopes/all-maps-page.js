@@ -182,9 +182,8 @@
       var headerStyle = data.color ? ' style="background:' + data.color + ';"' : "";
       var buttonColor = data.color ? String(data.color) : "#b0d973";
       var buttonStyle =
-        ' style="display:block;margin:16px;padding:12px 16px;box-sizing:border-box;' +
-        "width:calc(100% - 32px);" +
-        "border-radius:999px;" +
+        ' style="display:block;padding:12px 16px;box-sizing:border-box;width:100%;' +
+        "border-radius:8px;" +
         "background:" +
         buttonColor +
         ';color:#fff;text-align:center;text-decoration:none;font-weight:600;"';
