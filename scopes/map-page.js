@@ -1730,10 +1730,8 @@
       var relevantPhaseLookup = buildRelevantPhaseLookup(phaseList);
       syncOutsidePhaseLegend(map, svgRoot, relevantPhaseLookup);
 
-      var hasPhases = phaseList.length > 0;
-      var hasTypes = typeListUnique.length > 0;
       var hasStatuses = statusList.length > 0;
-      if (!hasPhases && !hasTypes && !hasStatuses) return;
+      if (!hasStatuses) return;
 
       var legend = L.control({ position: "bottomright" });
       legend.onAdd = function () {
@@ -1770,82 +1768,6 @@
           event.stopPropagation();
           setLegendOpen(!isLegendOpen);
         });
-
-        if (phaseList.length) {
-          var phaseTitle = document.createElement("div");
-          phaseTitle.className = "map-legend__section-title";
-          phaseTitle.textContent = "Phase Legend";
-          legendBody.appendChild(phaseTitle);
-
-          phaseList.forEach(function (phase) {
-            var row = document.createElement("div");
-            row.className = "map-legend__item";
-            row.dataset.svgId = phase.svgId || "";
-            row.dataset.phaseName = phase.name || "";
-
-            var swatch = document.createElement("span");
-            swatch.className = "map-legend__swatch";
-            if (phase.swatchOutline) {
-              swatch.classList.add("map-legend__swatch--outline");
-              if (phase.swatchColor) {
-                swatch.style.borderColor = phase.swatchColor;
-              }
-            } else if (phase.swatchColor) {
-              swatch.style.background = phase.swatchColor;
-            }
-
-            var label = document.createElement("span");
-            label.textContent = phase.name || "";
-            row.appendChild(swatch);
-            row.appendChild(label);
-
-            if (phase.pdf) {
-              var link = document.createElement("a");
-              link.className = "map-legend__link";
-              link.href = phase.pdf;
-              link.target = "_blank";
-              link.rel = "noopener";
-              link.textContent = phase.pdfText || "View PDF";
-              row.appendChild(link);
-            }
-
-            var phaseTarget = getPhaseTarget(svgRoot, phase);
-            bindPhaseFocusTrigger(swatch, map, phaseTarget, phase.svgId);
-            bindPhaseFocusTrigger(label, map, phaseTarget, phase.svgId);
-
-            legendBody.appendChild(row);
-          });
-        }
-
-        if (typeListUnique.length) {
-          var typeTitle = document.createElement("div");
-          typeTitle.className = "map-legend__section-title";
-          typeTitle.textContent = "Lot Types";
-          legendBody.appendChild(typeTitle);
-
-          typeListUnique.forEach(function (type) {
-            var row = document.createElement("div");
-            row.className = "map-legend__item";
-            row.dataset.typeSlug = type.slug || "";
-
-            var swatch = document.createElement("span");
-            swatch.className = "map-legend__swatch map-legend__swatch--type";
-            if (type.outline) {
-              swatch.classList.add("map-legend__swatch--outline");
-              if (type.color) {
-                swatch.style.borderColor = type.color;
-              }
-            } else if (type.color) {
-              swatch.style.background = type.color;
-            }
-
-            var label = document.createElement("span");
-            label.textContent = type.name || type.slug || "";
-            row.appendChild(swatch);
-            row.appendChild(label);
-            legendBody.appendChild(row);
-          });
-        }
 
         if (statusList.length) {
           var statusTitle = document.createElement("div");
