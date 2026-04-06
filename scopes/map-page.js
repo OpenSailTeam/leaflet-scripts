@@ -457,6 +457,23 @@
       }
     }
 
+    function isSoldStatusLabel(value) {
+      return String(value || "").trim().toLowerCase() === "sold";
+    }
+
+    function applyPopupStatusStyles(el, status) {
+      if (!el) return;
+      if (isSoldStatusLabel(status)) {
+        el.style.fontWeight = "700";
+        el.style.color = "#c00";
+        el.style.textTransform = "uppercase";
+        return;
+      }
+      el.style.removeProperty("font-weight");
+      el.style.removeProperty("color");
+      el.style.removeProperty("text-transform");
+    }
+
     function setFirstMatchingHtml(card, selectors, value) {
       if (!card || value === undefined || value === null) return;
       for (var i = 0; i < selectors.length; i += 1) {
@@ -502,6 +519,14 @@
         ["[data-lot-field='status']", ".lot-status"],
         status || "",
       );
+      for (var j = 0; j < 2; j += 1) {
+        var statusSelector = ["[data-lot-field='status']", ".lot-status"][j];
+        var statusEl = card.querySelector(statusSelector);
+        if (statusEl) {
+          applyPopupStatusStyles(statusEl, status);
+          break;
+        }
+      }
       setFirstMatchingText(
         card,
         ["[data-lot-field='price']", ".lot-info"],
@@ -578,11 +603,18 @@
       }
       var title = escapeHtml(lot.name || lot.pid || "Lot");
       var statusLabel = getLotStatusLabel(lot);
+      var statusStyle = isSoldStatusLabel(statusLabel)
+        ? ' style="font-weight:700;color:#c00;text-transform:uppercase;"'
+        : "";
       var price = formatLotPrice(getLotPrice(lot));
       var logoUrl = getLotLogoUrl(lot);
       var details = getLotDetailsHtml(lot);
       var meta = statusLabel
-        ? '<div class="lot-popup__meta">' + escapeHtml(statusLabel) + "</div>"
+        ? '<div class="lot-popup__meta"' +
+          statusStyle +
+          ">" +
+          escapeHtml(statusLabel) +
+          "</div>"
         : "";
       var priceHtml = price
         ? '<div class="lot-popup__price">' + escapeHtml(price) + "</div>"
