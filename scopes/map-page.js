@@ -754,6 +754,41 @@
       return lot.statusColor || lot.status_color || lot["status-color"] || "";
     }
 
+    function isTruthySwitchValue(value) {
+      if (value === true) return true;
+      if (typeof value === "string") {
+        var normalized = value.trim().toLowerCase();
+        return normalized === "true" || normalized === "1" || normalized === "yes";
+      }
+      if (typeof value === "number") return value === 1;
+      return false;
+    }
+
+    function getLotStatusObject(lot) {
+      if (!lot || !lot.status || typeof lot.status !== "object") return null;
+      return lot.status;
+    }
+
+    function shouldHideLotStatusFromLegend(lot) {
+      if (!lot) return false;
+
+      var status = getLotStatusObject(lot);
+      if (status) {
+        if (isTruthySwitchValue(status.hideFromLegend)) return true;
+        if (isTruthySwitchValue(status.hide_from_legend)) return true;
+        if (isTruthySwitchValue(status["hide-from-legend"])) return true;
+      }
+
+      if (isTruthySwitchValue(lot.statusHideFromLegend)) return true;
+      if (isTruthySwitchValue(lot.status_hide_from_legend)) return true;
+      if (isTruthySwitchValue(lot["status-hide-from-legend"])) return true;
+      if (isTruthySwitchValue(lot.hideFromLegend)) return true;
+      if (isTruthySwitchValue(lot.hide_from_legend)) return true;
+      if (isTruthySwitchValue(lot["hide-from-legend"])) return true;
+
+      return false;
+    }
+
     function getLotMarkerOffset(lot, axis) {
       if (!lot) return 0;
       var value = null;
@@ -1663,7 +1698,7 @@
       lots.forEach(function (lot) {
         var label = getLotStatusLabel(lot);
         var color = getLotStatusColor(lot);
-        if (!label || !color) return;
+        if (!label || !color || shouldHideLotStatusFromLegend(lot)) return;
         var key = String(label).toLowerCase();
         if (!entries[key]) {
           entries[key] = {
