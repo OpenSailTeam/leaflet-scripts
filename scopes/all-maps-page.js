@@ -179,8 +179,8 @@
       var title = data.name ? String(data.name) : "Map";
       var info = data.dealInformation ? String(data.dealInformation) : "";
       var link = data.url ? String(data.url) : "";
-      var headerStyle = data.color ? ' style="background:' + data.color + ';"' : "";
-      var buttonColor = data.color ? String(data.color) : "#b0d973";
+      var headerStyle = ' style="background:#6bbb56;"';
+      var buttonColor = "#6bbb56";
       var buttonStyle =
         ' style="display:block;padding:12px 16px;box-sizing:border-box;width:100%;' +
         "border-radius:8px;" +
@@ -402,7 +402,7 @@
       var bounds = null;
       mapsData.forEach(function (item) {
         if (!item.coordinates || item.coordinates.length < 3) return;
-        var color = item.color || "#b0d973";
+        var color = item.color || "#6bbb56";
         var polygon = L.polygon(item.coordinates, {
           color: color,
           weight: 3,
