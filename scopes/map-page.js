@@ -685,6 +685,14 @@
       }
     }
 
+    function getSvgLengthFromScreen(svg, lengthPx) {
+      if (!svg) return null;
+      var start = getSvgPointFromScreen(svg, 0, 0);
+      var end = getSvgPointFromScreen(svg, lengthPx, 0);
+      if (!start || !end) return null;
+      return Math.abs(end.x - start.x);
+    }
+
     function getSvgDeltaFromScreen(svg, deltaX, deltaY) {
       if (!svg) return null;
       var start = getSvgPointFromScreen(svg, 0, 0);
@@ -837,18 +845,9 @@
       return Number.isFinite(parsed) ? parsed : 0;
     }
 
-    function getLotStatusDotRadius(el) {
-      if (!el || !el.getBBox) return 4;
-      try {
-        var bbox = el.getBBox();
-        var width = Math.abs(bbox.width);
-        var height = Math.abs(bbox.height);
-        var size = Math.min(width, height);
-        if (!Number.isFinite(size) || size <= 0) return 4;
-        return Math.max(1, size * 0.08);
-      } catch (err) {
-        return 4;
-      }
+    function getMapStatusDotRadius(svgRoot) {
+      var radius = getSvgLengthFromScreen(svgRoot, 4);
+      return Number.isFinite(radius) && radius > 0 ? radius : 4;
     }
 
     function getLotPrice(lot) {
@@ -1445,6 +1444,9 @@
         group.innerHTML = "";
       }
 
+      var radius = getMapStatusDotRadius(svgRoot);
+      var strokeWidth = Math.max(0.25, radius * 0.25);
+
       svgRoot.querySelectorAll(LOT_SELECTOR).forEach(function (el) {
         var pid = el.id;
         var lot = pid ? lotsByPid[pid] : null;
@@ -1472,8 +1474,6 @@
         }
         if (!svgPoint) return;
 
-        var radius = getLotStatusDotRadius(el);
-        var strokeWidth = Math.max(0.25, radius * 0.25);
         var circle = document.createElementNS(svgNS, "circle");
         circle.setAttribute("cx", svgPoint.x);
         circle.setAttribute("cy", svgPoint.y);
