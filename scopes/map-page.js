@@ -685,14 +685,6 @@
       }
     }
 
-    function getSvgLengthFromScreen(svg, lengthPx) {
-      if (!svg) return null;
-      var start = getSvgPointFromScreen(svg, 0, 0);
-      var end = getSvgPointFromScreen(svg, lengthPx, 0);
-      if (!start || !end) return null;
-      return Math.abs(end.x - start.x);
-    }
-
     function getSvgDeltaFromScreen(svg, deltaX, deltaY) {
       if (!svg) return null;
       var start = getSvgPointFromScreen(svg, 0, 0);
@@ -843,6 +835,20 @@
       }
       var parsed = parseNumber(value);
       return Number.isFinite(parsed) ? parsed : 0;
+    }
+
+    function getLotStatusDotRadius(el) {
+      if (!el || !el.getBBox) return 4;
+      try {
+        var bbox = el.getBBox();
+        var width = Math.abs(bbox.width);
+        var height = Math.abs(bbox.height);
+        var size = Math.min(width, height);
+        if (!Number.isFinite(size) || size <= 0) return 4;
+        return Math.max(1, size * 0.08);
+      } catch (err) {
+        return 4;
+      }
     }
 
     function getLotPrice(lot) {
@@ -1439,13 +1445,6 @@
         group.innerHTML = "";
       }
 
-      var radiusPx = 4;
-      var strokePx = 1;
-      var radius = getSvgLengthFromScreen(svgRoot, radiusPx);
-      var strokeWidth = getSvgLengthFromScreen(svgRoot, strokePx);
-      if (!Number.isFinite(radius) || radius <= 0) radius = 4;
-      if (!Number.isFinite(strokeWidth) || strokeWidth <= 0) strokeWidth = 1;
-
       svgRoot.querySelectorAll(LOT_SELECTOR).forEach(function (el) {
         var pid = el.id;
         var lot = pid ? lotsByPid[pid] : null;
@@ -1473,31 +1472,16 @@
         }
         if (!svgPoint) return;
 
+        var radius = getLotStatusDotRadius(el);
+        var strokeWidth = Math.max(0.25, radius * 0.25);
         var circle = document.createElementNS(svgNS, "circle");
         circle.setAttribute("cx", svgPoint.x);
         circle.setAttribute("cy", svgPoint.y);
         circle.setAttribute("r", radius);
         circle.setAttribute("fill", color);
         circle.setAttribute("stroke-width", strokeWidth);
-        circle.setAttribute("vector-effect", "non-scaling-stroke");
         group.appendChild(circle);
       });
-
-      function updateDotSizes() {
-        var newRadius = getSvgLengthFromScreen(svgRoot, radiusPx);
-        var newStroke = getSvgLengthFromScreen(svgRoot, strokePx);
-        if (!Number.isFinite(newRadius) || newRadius <= 0) return;
-        if (!Number.isFinite(newStroke) || newStroke <= 0) newStroke = 1;
-        group.querySelectorAll("circle").forEach(function (circle) {
-          circle.setAttribute("r", newRadius);
-          circle.setAttribute("stroke-width", newStroke);
-        });
-      }
-
-      if (map && map.on) {
-        map.on("zoom", updateDotSizes);
-        map.on("resize", updateDotSizes);
-      }
     }
 
     function normalizePhaseKeyPart(value) {
