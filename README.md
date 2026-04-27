@@ -50,7 +50,50 @@ Supported object job types:
 - `scopes/map-tool-page.js`: map tool runtime.
 - `scopes/all-maps-page.js`: all maps runtime.
 - `scopes/default-sort.js`: Jetboost sort runtime.
+- `snippets/parcels-deeplink-inline.js`: inline script source for `/maps/parcels` deep-linking.
 - `global-body.js`: backward-compatible shim (deprecated).
+
+## Parcels -> map popup deep-link
+
+Use `snippets/parcels-deeplink-inline.js` on the `/maps/parcels` page (Webflow footer custom code or embedded script) to append:
+- `khLotSlug` (primary) from `data-kh-lot-slug` or `data-lot-slug`
+- `khLotName` (fallback) from `[data-lot-field='name']`
+
+The script targets `a[data-popup-card][href*='/map/']`, preserves existing query/hash params, and rebinds on DOM mutations (Jetboost/list updates).
+
+Example include:
+
+```html
+<script src="https://cdn.jsdelivr.net/gh/OpenSailTeam/leaflet-scripts@main/snippets/parcels-deeplink-inline.js"></script>
+```
+
+## Map tool assignment editor
+
+`initMapToolPage` now renders an assignment editor inside shape popups.
+
+- Managers can search lots by title, slug, or shape-id fields.
+- Popups support assigning a selected lot, clearing assignment, and saving.
+- Saves are posted to Zapier via browser-safe form `POST` (`no-cors`).
+
+Webhook URL resolution:
+- Default: `https://hooks.zapier.com/hooks/catch/24263741/uepdwbe/`
+- Optional override on map container:
+
+```html
+<div id="map" data-assignment-webhook-url="https://hooks.zapier.com/hooks/catch/..."></div>
+```
+
+Webhook payload keys:
+- `eventType` (`shape_lot_assignment_update`)
+- `timestamp`
+- `pageUrl`
+- `shape.elementSvgId`
+- `currentAssignment` (`lotSlug`, `lotName`, `lotPid`) or `null`
+- `nextAssignment` (`lotSlug`, `lotName`, `lotPid`) or `null`
+- `selectionMeta.queryText`
+- `selectionMeta.duplicateDetected`
+- `selectionMeta.duplicateShapeIds`
+- `payloadJson` (full JSON payload serialized as a string form field)
 
 ## Troubleshooting
 
