@@ -98,6 +98,12 @@
         viewBox: mapEl.dataset.svgViewbox || data.viewBox || null,
         width: parseLength(mapEl.dataset.svgWidth || data.width),
         height: parseLength(mapEl.dataset.svgHeight || data.height),
+        statusDotRadius: parseNumber(
+          mapEl.dataset.statusDotRadius ||
+            data.statusDotRadius ||
+            data.status_dot_radius ||
+            data["status-dot-radius"],
+        ),
       };
     }
 
@@ -845,9 +851,13 @@
       return Number.isFinite(parsed) ? parsed : 0;
     }
 
-    function getMapStatusDotRadius(svgRoot) {
-      var radius = getSvgLengthFromScreen(svgRoot, 4);
-      return Number.isFinite(radius) && radius > 0 ? radius : 4;
+    function getMapStatusDotRadius(svgRoot, statusDotRadius) {
+      var radiusPx =
+        Number.isFinite(statusDotRadius) && statusDotRadius > 0
+          ? statusDotRadius
+          : 4;
+      var radius = getSvgLengthFromScreen(svgRoot, radiusPx);
+      return Number.isFinite(radius) && radius > 0 ? radius : radiusPx;
     }
 
     function getLotPrice(lot) {
@@ -1431,7 +1441,7 @@
       setTimeout(openDeepLinkedLotOnce, 0);
     }
 
-    function addStatusDots(svgRoot, map, lotsByPid) {
+    function addStatusDots(svgRoot, map, lotsByPid, statusDotRadius) {
       if (!svgRoot) return;
       var svgNS = "http://www.w3.org/2000/svg";
       var group = svgRoot.querySelector("#lot-status-dots");
@@ -1444,7 +1454,7 @@
         group.innerHTML = "";
       }
 
-      var radius = getMapStatusDotRadius(svgRoot);
+      var radius = getMapStatusDotRadius(svgRoot, statusDotRadius);
       var strokeWidth = Math.max(0.25, radius * 0.25);
 
       svgRoot.querySelectorAll(LOT_SELECTOR).forEach(function (el) {
@@ -1902,7 +1912,7 @@
         if (svgRoot) {
           svgRoot.setAttribute("preserveAspectRatio", "xMidYMid meet");
           bindLotEvents(svgRoot, map, lotsByPid, lotsBySlug);
-          addStatusDots(svgRoot, map, lotsByPid);
+          addStatusDots(svgRoot, map, lotsByPid, mapData.statusDotRadius);
           addLegend(
             map,
             Object.values(lotsByPid),
