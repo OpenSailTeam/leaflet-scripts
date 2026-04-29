@@ -154,6 +154,59 @@
       return type;
     }
 
+    function normalizeLotStatus(status) {
+      if (!status) return status;
+      var color =
+        status.swatchColor ||
+        status.statusColor ||
+        status.status_color ||
+        status["status-color"] ||
+        status.color ||
+        "";
+      if (color && typeof color === "object") {
+        color = color.value || color.hex || "";
+      }
+
+      var sort = status.sortOrder;
+      if (sort === undefined || sort === null || sort === "") {
+        sort = status.statusSort;
+      }
+      if (sort === undefined || sort === null || sort === "") {
+        sort = status.status_sort;
+      }
+      if (sort === undefined || sort === null || sort === "") {
+        sort = status["status-sort"];
+      }
+      if (sort !== undefined && sort !== null && sort !== "") {
+        var parsed = Number(sort);
+        sort = Number.isFinite(parsed) ? parsed : null;
+      } else {
+        sort = null;
+      }
+
+      return {
+        label:
+          status.name ||
+          status.statusName ||
+          status.status_name ||
+          status["status-name"] ||
+          status.label ||
+          "",
+        slug:
+          status.slug ||
+          status.statusSlug ||
+          status.status_slug ||
+          status["status-slug"] ||
+          "",
+        color: color,
+        sort: sort,
+        hideFromLegend:
+          status.hideFromLegend ||
+          status.hide_from_legend ||
+          status["hide-from-legend"],
+      };
+    }
+
     function getMapPhasesData() {
       var phases = [];
       document.querySelectorAll(".map-phases-json").forEach(function (node) {
@@ -184,6 +237,22 @@
         }
       });
       return types;
+    }
+
+    function getLotStatusesData() {
+      var statuses = [];
+      document.querySelectorAll(".lot-status-json").forEach(function (node) {
+        var raw = node.dataset.json || node.textContent;
+        if (!raw) return;
+        try {
+          var decoded = decodeHtmlEntities(raw);
+          var item = JSON.parse(decoded);
+          if (item) statuses.push(normalizeLotStatus(item));
+        } catch (err) {
+          console.warn("Invalid lot status JSON", err, raw);
+        }
+      });
+      return statuses;
     }
 
     function extractLotType(lot) {
@@ -1716,23 +1785,73 @@
       });
     }
 
-    function addLegend(map, lots, phases, svgRoot, lotTypes) {
+    function addLegend(map, lots, phases, svgRoot, lotTypes, lotStatuses) {
       var phaseList = Array.isArray(phases) ? phases.slice() : [];
       var typeList =
         Array.isArray(lotTypes) && lotTypes.length ? lotTypes.slice() : [];
+      var statusItems = Array.isArray(lotStatuses) ? lotStatuses.slice() : [];
       var entries = {};
+      var entryAliases = {};
+
+      function getStatusEntryKey(value) {
+        return String(value || "").trim().toLowerCase();
+      }
+
+      function findExistingStatusEntryKey(keys) {
+        for (var i = 0; i < keys.length; i += 1) {
+          var key = getStatusEntryKey(keys[i]);
+          if (key && entryAliases[key]) return entryAliases[key];
+          if (key && entries[key]) return key;
+        }
+        return "";
+      }
+
+      function addStatusEntry(keys, label, color, sort) {
+        if (!label || !color) return;
+        var lookupKeys = keys.concat([label]);
+        var entryKey = findExistingStatusEntryKey(lookupKeys);
+        if (!entryKey) entryKey = getStatusEntryKey(label);
+        if (!entryKey) return;
+
+        if (!entries[entryKey]) {
+          entries[entryKey] = {
+            label: label,
+            color: color,
+            sort: sort,
+          };
+        } else {
+          if (!entries[entryKey].color && color) entries[entryKey].color = color;
+          if (
+            (entries[entryKey].sort === null ||
+              entries[entryKey].sort === undefined) &&
+            sort !== null &&
+            sort !== undefined
+          ) {
+            entries[entryKey].sort = sort;
+          }
+        }
+
+        lookupKeys.forEach(function (value) {
+          var alias = getStatusEntryKey(value);
+          if (alias) entryAliases[alias] = entryKey;
+        });
+      }
+
       lots.forEach(function (lot) {
         var label = getLotStatusLabel(lot);
         var color = getLotStatusColor(lot);
         if (!label || !color || shouldHideLotStatusFromLegend(lot)) return;
-        var key = String(label).toLowerCase();
-        if (!entries[key]) {
-          entries[key] = {
-            label: label,
-            color: color,
-            sort: getLotStatusSort(lot),
-          };
-        }
+        addStatusEntry([label], label, color, getLotStatusSort(lot));
+      });
+
+      statusItems.forEach(function (status) {
+        if (!status || isTruthySwitchValue(status.hideFromLegend)) return;
+        addStatusEntry(
+          [status.slug, status.label],
+          status.label,
+          status.color,
+          status.sort,
+        );
       });
 
       if (!typeList.length) {
@@ -1919,6 +2038,7 @@
             getMapPhasesData(),
             svgRoot,
             getLotTypesData(),
+            getLotStatusesData(),
           );
         }
       }
