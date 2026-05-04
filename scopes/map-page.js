@@ -1770,9 +1770,9 @@
 
         var relevant = isPhaseRelevant(phase, relevantPhaseLookup);
         if (!relevant) {
-          item.style.display = "none";
-          item.setAttribute("aria-hidden", "true");
-          return;
+          // item.style.display = "none";
+          // item.setAttribute("aria-hidden", "true");
+          // return;
         }
 
         item.style.removeProperty("display");
