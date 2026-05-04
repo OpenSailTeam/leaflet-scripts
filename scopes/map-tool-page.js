@@ -10,8 +10,6 @@
 
     var LOT_SELECTOR = ".lot";
     var MAP_ID = "map";
-    var ASSIGNMENT_WEBHOOK_DEFAULT_URL =
-      "https://hooks.zapier.com/hooks/catch/24263741/uepdwbe/";
     var ASSIGNMENT_REFRESH_DELAY_MS = 2000;
     var ASSIGNMENT_OPTIMISTIC_HOLD_MS = 15000;
 
@@ -126,7 +124,7 @@
         var custom = String(mapEl.dataset.assignmentWebhookUrl).trim();
         if (custom) return custom;
       }
-      return ASSIGNMENT_WEBHOOK_DEFAULT_URL;
+      return "";
     }
 
     function normalizeLot(lot) {
