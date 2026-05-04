@@ -248,7 +248,11 @@
         if (zoom !== null) defaultZoom = zoom;
       }
 
-      var map = L.map(MAP_CONTAINER_ID);
+      var map = L.map(MAP_CONTAINER_ID, {
+        scrollWheelZoom: false,
+        zoomControl: false,
+        dragging: false,
+      });
       var fullscreenControl = null;
       if (L.control && L.control.fullscreen) {
         fullscreenControl = L.control.fullscreen({ position: "topright" });
