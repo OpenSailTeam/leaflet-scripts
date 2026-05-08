@@ -2015,6 +2015,7 @@
       function refreshMapView(boundsObj) {
         map.invalidateSize();
         map.fitBounds(boundsObj, { padding: [20, 20], animate: false });
+        map.setZoom(map.getZoom() + 2, { animate: false });
       }
 
       function applyOverlay(svgElement, bounds) {
