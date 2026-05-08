@@ -83,6 +83,15 @@
       };
     }
 
+    function firstDefined() {
+      for (var i = 0; i < arguments.length; i += 1) {
+        if (arguments[i] !== undefined && arguments[i] !== null) {
+          return arguments[i];
+        }
+      }
+      return null;
+    }
+
     function getMapData(mapEl) {
       var data = parseJsonScript("map-data") || {};
       var svgUrl =
@@ -98,6 +107,30 @@
         viewBox: mapEl.dataset.svgViewbox || data.viewBox || null,
         width: parseLength(mapEl.dataset.svgWidth || data.width),
         height: parseLength(mapEl.dataset.svgHeight || data.height),
+        initialZoomOffset: parseNumber(
+          firstDefined(
+            mapEl.dataset.initialZoomOffset,
+            data.initialZoomOffset,
+            data.initial_zoom_offset,
+            data["initial-zoom-offset"],
+          ),
+        ),
+        initialPositionOffsetX: parseNumber(
+          firstDefined(
+            mapEl.dataset.initialPositionOffsetX,
+            data.initialPositionOffsetX,
+            data.initial_position_offset_x,
+            data["initial-position-offset-x"],
+          ),
+        ),
+        initialPositionOffsetY: parseNumber(
+          firstDefined(
+            mapEl.dataset.initialPositionOffsetY,
+            data.initialPositionOffsetY,
+            data.initial_position_offset_y,
+            data["initial-position-offset-y"],
+          ),
+        ),
         statusDotRadius: parseNumber(
           mapEl.dataset.statusDotRadius ||
             data.statusDotRadius ||
@@ -1987,6 +2020,12 @@
 
       var minZoom = parseNumber(mapEl.dataset.minZoom);
       if (minZoom === null) minZoom = -1;
+      var initialZoomOffset = mapData.initialZoomOffset;
+      if (initialZoomOffset === null) initialZoomOffset = 1;
+      var initialPositionOffsetX = mapData.initialPositionOffsetX;
+      if (initialPositionOffsetX === null) initialPositionOffsetX = 0;
+      var initialPositionOffsetY = mapData.initialPositionOffsetY;
+      if (initialPositionOffsetY === null) initialPositionOffsetY = 0;
 
       var map = L.map(MAP_ID, {
         crs: L.CRS.Simple,
@@ -2015,7 +2054,12 @@
       function refreshMapView(boundsObj) {
         map.invalidateSize();
         map.fitBounds(boundsObj, { padding: [20, 20], animate: false });
-        map.setZoom(map.getZoom() + 1, { animate: false });
+        map.setZoom(map.getZoom() + initialZoomOffset, { animate: false });
+        if (initialPositionOffsetX || initialPositionOffsetY) {
+          map.panBy([initialPositionOffsetX, initialPositionOffsetY], {
+            animate: false,
+          });
+        }
       }
 
       function applyOverlay(svgElement, bounds) {

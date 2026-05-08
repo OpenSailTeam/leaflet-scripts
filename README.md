@@ -76,8 +76,7 @@ Example include:
 - Saves are posted to Zapier via browser-safe form `POST` (`no-cors`).
 
 Webhook URL resolution:
-- Default: `https://hooks.zapier.com/hooks/catch/24263741/uepdwbe/`
-- Optional override on map container:
+- Required on the map container:
 
 ```html
 <div id="map" data-assignment-webhook-url="https://hooks.zapier.com/hooks/catch/..."></div>
