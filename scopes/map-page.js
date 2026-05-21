@@ -1109,6 +1109,15 @@
       }
     }
 
+    function unwrapNodePreservingChildren(node) {
+      if (!node || !node.parentNode) return;
+      var parent = node.parentNode;
+      while (node.firstChild) {
+        parent.insertBefore(node.firstChild, node);
+      }
+      parent.removeChild(node);
+    }
+
     function applyPopupCardLinkField(card, lot, dataFieldName, lotJsonKey) {
       if (!card || !lot || !dataFieldName || !lotJsonKey) return;
       var selector = "[data-lot-field='" + dataFieldName + "']";
@@ -1159,7 +1168,16 @@
             builderLinkEl.setAttribute("rel", "noopener");
           }
         } else {
-          removeNodeAndPruneEmptyAncestors(builderLinkEl, card);
+          var nestedLogoEl = builderLinkEl.querySelector("[data-lot-field='logo']");
+          if (
+            nestedLogoEl &&
+            nestedLogoEl.tagName === "IMG" &&
+            getLotLogoUrl(lot)
+          ) {
+            unwrapNodePreservingChildren(builderLinkEl);
+          } else {
+            removeNodeAndPruneEmptyAncestors(builderLinkEl, card);
+          }
         }
       }
 
